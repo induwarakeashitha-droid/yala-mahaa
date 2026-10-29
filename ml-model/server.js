@@ -120,8 +120,38 @@ async function fetchRainfallMap(lat, lon, endDateStr) {
   return rainMap;
 }
 
-// 4. Build daily storage series with up to 3-day forward-fill (Step 3 of notebook)
+// Gaps of 4 to MAX_FILL_GAP missing days are filled with a straight line between the readings
+// on either side, so a few missed scrapes don't stop the forecast. Only the model input is
+// filled; nothing is stored. Longer gaps stay NaN and the forecast is refused.
+const MAX_FILL_GAP = 10;
+
+// 4. Build daily storage series with up to 3-day forward-fill (Step 3 of notebook),
+// then interpolate the gaps the forward-fill could not cover
 function buildDailyStorage(readings) {
+  const series = forwardFilledStorage(readings);
+  let i = 0;
+  while (i < series.length) {
+    if (!Number.isNaN(series[i].storage)) { i += 1; continue; }
+    let end = i;
+    while (end < series.length && Number.isNaN(series[end].storage)) end += 1;
+    // The forward-filled days just before the NaN run belong to the same gap
+    let start = i;
+    while (start > 0 && series[start - 1].filled) start -= 1;
+    const before = series[start - 1];
+    const after = series[end];
+    const missing = end - start;
+    if (before && after && missing <= MAX_FILL_GAP) {
+      for (let k = start; k < end; k++) {
+        const t = (k - start + 1) / (missing + 1);
+        series[k] = { date: series[k].date, storage: before.storage + (after.storage - before.storage) * t, filled: true };
+      }
+    }
+    i = end;
+  }
+  return series;
+}
+
+function forwardFilledStorage(readings) {
   const byDate = new Map();
   for (const r of readings) {
     byDate.set(r.date, Number(r.storage_acft));
@@ -144,7 +174,7 @@ function buildDailyStorage(readings) {
       series.push({ date: curr, storage: lastVal });
     } else if (lastVal !== null && ffillCount < 3) {
       ffillCount += 1;
-      series.push({ date: curr, storage: lastVal });
+      series.push({ date: curr, storage: lastVal, filled: true });
     } else {
       series.push({ date: curr, storage: NaN });
     }
@@ -234,10 +264,10 @@ app.post("/api/forecast/predict", async (req, res) => {
       is_major,
     };
 
-    // gaps over 3 days leave NaN in the fill history, the trees can't use that
+    // gaps over MAX_FILL_GAP days leave NaN in the fill history, the trees can't use that
     if (!Object.values(featureRow).every(Number.isFinite)) {
       return res.status(400).json({
-        error: "At least 15 days of recent daily storage readings are required (the last 15 days have gaps).",
+        error: `At least 15 days of recent daily storage readings are required (the last 15 days have a gap of more than ${MAX_FILL_GAP} days).`,
       });
     }
 

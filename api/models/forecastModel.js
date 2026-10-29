@@ -58,6 +58,18 @@ exports.getForecastByTankId = async (req, res, next) => {
   }
 
   try {
+    // A tank linked to its reservoir (models/add-mahawelitanks-reservoir.sql) is forecast from
+    // the reservoir's daily readings, which go back much further than the Mahaweli ones
+    const link = await db.query('SELECT reservoir_id FROM mahawelitanks WHERE id = $1', [id])
+    const reservoirId = link.rows[0]?.reservoir_id
+    if (reservoirId != null) {
+      const withTank = {
+        status(code) { res.status(code); return withTank },
+        json(body) { return res.json({ tank_id: Number(id), ...body }) }
+      }
+      return exports.getForecastByReservoirId({ params: { id: String(reservoirId) } }, withTank, next)
+    }
+
     const r = await db.query(
       `SELECT t.id, t.tank_name,
               to_char(l.reading_date, 'YYYY-MM-DD') AS date,

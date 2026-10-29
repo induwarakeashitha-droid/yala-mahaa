@@ -359,3 +359,6 @@ CREATE TABLE IF NOT EXISTS gauge_alert_state (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (basin, station)
 );
+
+-- Each Mahaweli tank's matching reservoir (filled by models/add-mahawelitanks-reservoir.sql)
+ALTER TABLE mahawelitanks ADD COLUMN IF NOT EXISTS reservoir_id INT REFERENCES reservoirs(id) ON DELETE SET NULL;
