@@ -73,7 +73,7 @@ export default function SiteRelative2({ t }: { t: Dict }) {
             </div>
             <img
               src="/images/screens/phone-forecast.webp"
-              alt="The 14-day tank forecast in the Yala Maha Assist app"
+              alt="The 14-day tank forecast in the Yala Maha app"
               className="hero-phone site-relative -z-20! lg:w-90 w-75 h-auto site-md-mt-0 site-mt-34"
             />
             <div className="hero-card site-absolute md:bottom-60 top-8 lg:inset-e-14 lg:w-60 w-50 [inset-inline-end:calc(var(--spacing)_*_0)] h-fit" style={css({ "--delay": "1.5s" })}>

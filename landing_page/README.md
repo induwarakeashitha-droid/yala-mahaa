@@ -1,6 +1,6 @@
-# Yala Maha Assist — landing page
+# Yala Maha — landing page
 
-The public landing page for the Yala Maha Assist farmer app (Next.js 16, Tailwind CSS 4).
+The public landing page for the Yala Maha farmer app (Next.js 16, Tailwind CSS 4).
 
 ```bash
 npm install

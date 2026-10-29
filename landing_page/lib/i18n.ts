@@ -11,11 +11,11 @@ export const fill = (text: string, values: Record<string, string | number>) =>
 
 const en = {
   meta: {
-    title: "Yala Maha Assist | Water and farm information for Sri Lankan farmers",
+    title: "Yala Maha | Water and farm information for Sri Lankan farmers",
     description:
-      "Yala Maha Assist shows farmers their tank's water level, a 14-day water forecast and flood predictions, alerts them by SMS and by voice call in emergencies, and lets them report canal problems with photos. In Sinhala, Tamil and English.",
+      "Yala Maha shows farmers their tank's water level, a 14-day water forecast and flood predictions, alerts them by SMS and by voice call in emergencies, and lets them report canal problems with photos. In Sinhala, Tamil and English.",
   },
-  appName: "Yala Maha Assist",
+  appName: "Yala Maha",
   nav: {
     features: "Features",
     who: "Who it's for",
@@ -72,7 +72,7 @@ const en = {
   features: {
     badge: "Everything in one place",
     title: "Water information you can act on.",
-    text: "Yala Maha Assist brings the Irrigation Department's tank, river and canal data to your phone, and gives you a simple way to tell the office when something is wrong.",
+    text: "Yala Maha brings the Irrigation Department's tank, river and canal data to your phone, and gives you a simple way to tell the office when something is wrong.",
     tank: {
       title: "Your tank, every day",
       text: "See how full your tank is, how fast it is changing and whether it is spilling, from the Irrigation Department's daily readings.",
@@ -121,7 +121,7 @@ const en = {
       text: "Water releases, flood warnings and advice arrive by SMS on any phone. When it is serious, like a flood on its way, farmers also get an automated voice call.",
       smsTitle: "Water release notice",
       smsBody: "Water release for Kalawewa · Left bank canal begins on 10 Oct. Please prepare your field channels.",
-      callLabel: "Incoming call · YalaMaha flood alert",
+      callLabel: "Incoming call · Yala Maha flood alert",
       callBody: "Yan Oya may overflow tonight. Move cattle and pumps to higher ground.",
     },
   },
@@ -155,7 +155,7 @@ const en = {
     days14: "14 days",
   },
   helps: {
-    title: "Where Yala Maha Assist helps",
+    title: "Where Yala Maha helps",
     sub: "From tank to canal, in your language",
     cards: [
       { title: "Nachchaduwa wewa", place: "Anuradhapura", text: "Tanks and reservoirs you can follow, read every day" },
@@ -196,7 +196,7 @@ const en = {
   tour: {
     badge: "A closer look",
     title: "Inside the app",
-    sub: "Real screens from Yala Maha Assist",
+    sub: "Real screens from Yala Maha",
     prev: "Previous screen",
     next: "Next screen",
     slides: [
@@ -229,7 +229,7 @@ const en = {
     items: [
       [
         "Where can I get the app?",
-        "Yala Maha Assist is a mobile app for Android and iPhone. Download it from Google Play or the App Store, then sign in with your phone number.",
+        "Yala Maha is a mobile app for Android and iPhone. Download it from Google Play or the App Store, then sign in with your phone number.",
       ],
       [
         "Where do the tank, river and canal figures come from?",
@@ -284,11 +284,11 @@ export type Dict = typeof en;
 
 const si: Dict = {
   meta: {
-    title: "යල-මහ සහාය | ශ්‍රී ලාංකික ගොවීන් සඳහා ජල සහ ගොවිපළ තොරතුරු",
+    title: "යල මහ | ශ්‍රී ලාංකික ගොවීන් සඳහා ජල සහ ගොවිපළ තොරතුරු",
     description:
-      "යල-මහ සහාය ගොවීන්ට ඔවුන්ගේ වැවේ ජල මට්ටම, දින 14ක ජල පුරෝකථනය සහ ගංවතුර පුරෝකථන පෙන්වයි, SMS සහ හදිසියකදී හඬ ඇමතුමෙන් දැනුම් දෙයි, ඡායාරූප සමඟ ඇළ ගැටලු වාර්තා කිරීමට ඉඩ දෙයි. සිංහල, දෙමළ සහ ඉංග්‍රීසියෙන්.",
+      "යල මහ ගොවීන්ට ඔවුන්ගේ වැවේ ජල මට්ටම, දින 14ක ජල පුරෝකථනය සහ ගංවතුර පුරෝකථන පෙන්වයි, SMS සහ හදිසියකදී හඬ ඇමතුමෙන් දැනුම් දෙයි, ඡායාරූප සමඟ ඇළ ගැටලු වාර්තා කිරීමට ඉඩ දෙයි. සිංහල, දෙමළ සහ ඉංග්‍රීසියෙන්.",
   },
-  appName: "යල-මහ සහාය",
+  appName: "යල මහ",
   nav: {
     features: "විශේෂාංග",
     who: "කා සඳහාද",
@@ -345,7 +345,7 @@ const si: Dict = {
   features: {
     badge: "සියල්ල එකම තැනක",
     title: "ඔබට ක්‍රියාත්මක විය හැකි ජල තොරතුරු.",
-    text: "යල-මහ සහාය වාරිමාර්ග දෙපාර්තමේන්තුවේ වැව්, ගංගා සහ ඇළ දත්ත ඔබේ දුරකථනයට ගෙන එන අතර, යමක් වැරදුණු විට කාර්යාලයට පහසුවෙන් දැනුම් දීමට ඉඩ සලසයි.",
+    text: "යල මහ වාරිමාර්ග දෙපාර්තමේන්තුවේ වැව්, ගංගා සහ ඇළ දත්ත ඔබේ දුරකථනයට ගෙන එන අතර, යමක් වැරදුණු විට කාර්යාලයට පහසුවෙන් දැනුම් දීමට ඉඩ සලසයි.",
     tank: {
       title: "ඔබේ වැව, සෑම දිනකම",
       text: "වාරිමාර්ග දෙපාර්තමේන්තුවේ දෛනික කියවීම් අනුව ඔබේ වැව කොතරම් පිරී ඇත්ද, කොතරම් වේගයෙන් වෙනස් වේද, වාන් දමනවාද යන්න බලන්න.",
@@ -394,7 +394,7 @@ const si: Dict = {
       text: "ජල නිකුත් කිරීම්, ගංවතුර අනතුරු ඇඟවීම් සහ උපදෙස් ඕනෑම දුරකථනයකට SMS මගින් ලැබේ. ගංවතුරක් ළං වන විට වැනි බරපතළ අවස්ථාවල ගොවීන්ට ස්වයංක්‍රීය හඬ ඇමතුමක් ද ලැබේ.",
       smsTitle: "ජල නිකුත් කිරීමේ දැන්වීම",
       smsBody: "Kalawewa · වම් ඉවුරු ඇළට ජලය නිකුත් කිරීම ඔක්. 10 ආරම්භ වේ. කරුණාකර ඔබේ කුඹුරු ඇළ සූදානම් කරන්න.",
-      callLabel: "ලැබෙන ඇමතුම · යල-මහ ගංවතුර අනතුරු ඇඟවීම",
+      callLabel: "ලැබෙන ඇමතුම · යල මහ ගංවතුර අනතුරු ඇඟවීම",
       callBody: "අද රාත්‍රියේ යාන් ඔය පිටාර ගැලිය හැක. ගවයන් සහ පොම්ප උස් බිමකට ගෙන යන්න.",
     },
   },
@@ -428,7 +428,7 @@ const si: Dict = {
     days14: "දින 14",
   },
   helps: {
-    title: "යල-මහ සහාය උදව් වන තැන්",
+    title: "යල මහ උදව් වන තැන්",
     sub: "වැවේ සිට ඇළ දක්වා, ඔබේ භාෂාවෙන්",
     cards: [
       { title: "නාච්චදූව වැව", place: "අනුරාධපුරය", text: "දිනපතා කියවෙන, ඔබට අනුගමනය කළ හැකි වැව් සහ ජලාශ" },
@@ -469,7 +469,7 @@ const si: Dict = {
   tour: {
     badge: "සමීපව බලන්න",
     title: "ඇප් එක ඇතුළත",
-    sub: "යල-මහ සහාය ඇප් එකේ සැබෑ තිර",
+    sub: "යල මහ ඇප් එකේ සැබෑ තිර",
     prev: "පෙර තිරය",
     next: "ඊළඟ තිරය",
     slides: [
@@ -502,7 +502,7 @@ const si: Dict = {
     items: [
       [
         "ඇප් එක ලබාගන්නේ කොහෙන්ද?",
-        "යල-මහ සහාය Android සහ iPhone සඳහා වන ජංගම ඇප් එකකි. Google Play හෝ App Store වෙතින් බාගත කර, ඔබේ දුරකථන අංකයෙන් පිවිසෙන්න.",
+        "යල මහ Android සහ iPhone සඳහා වන ජංගම ඇප් එකකි. Google Play හෝ App Store වෙතින් බාගත කර, ඔබේ දුරකථන අංකයෙන් පිවිසෙන්න.",
       ],
       [
         "වැව්, ගංගා සහ ඇළ දත්ත ලැබෙන්නේ කොහෙන්ද?",
@@ -555,11 +555,11 @@ const si: Dict = {
 
 const ta: Dict = {
   meta: {
-    title: "யால-மகா உதவி | இலங்கை விவசாயிகளுக்கான நீர், பண்ணைத் தகவல்கள்",
+    title: "யால மகா | இலங்கை விவசாயிகளுக்கான நீர், பண்ணைத் தகவல்கள்",
     description:
-      "யால-மகா உதவி விவசாயிகளுக்கு அவர்களின் குளத்தின் நீர்மட்டம், 14 நாள் நீர் முன்னறிவிப்பு, வெள்ள முன்னறிவிப்புகளைக் காட்டுகிறது; SMS மூலமும் அவசரத்தில் குரல் அழைப்பு மூலமும் எச்சரிக்கிறது; புகைப்படங்களுடன் கால்வாய் பிரச்சினைகளை அறிவிக்க உதவுகிறது. சிங்களம், தமிழ், ஆங்கிலத்தில்.",
+      "யால மகா விவசாயிகளுக்கு அவர்களின் குளத்தின் நீர்மட்டம், 14 நாள் நீர் முன்னறிவிப்பு, வெள்ள முன்னறிவிப்புகளைக் காட்டுகிறது; SMS மூலமும் அவசரத்தில் குரல் அழைப்பு மூலமும் எச்சரிக்கிறது; புகைப்படங்களுடன் கால்வாய் பிரச்சினைகளை அறிவிக்க உதவுகிறது. சிங்களம், தமிழ், ஆங்கிலத்தில்.",
   },
-  appName: "யால-மகா உதவி",
+  appName: "யால மகா",
   nav: {
     features: "அம்சங்கள்",
     who: "யாருக்காக",
@@ -616,7 +616,7 @@ const ta: Dict = {
   features: {
     badge: "அனைத்தும் ஒரே இடத்தில்",
     title: "நீங்கள் செயல்படக்கூடிய நீர்த் தகவல்கள்.",
-    text: "யால-மகா உதவி, நீர்ப்பாசனத் திணைக்களத்தின் குளம், ஆறு, கால்வாய் தரவுகளை உங்கள் தொலைபேசிக்குக் கொண்டுவருகிறது; ஏதாவது தவறாக இருந்தால் அலுவலகத்துக்கு எளிதாகத் தெரிவிக்கவும் உதவுகிறது.",
+    text: "யால மகா, நீர்ப்பாசனத் திணைக்களத்தின் குளம், ஆறு, கால்வாய் தரவுகளை உங்கள் தொலைபேசிக்குக் கொண்டுவருகிறது; ஏதாவது தவறாக இருந்தால் அலுவலகத்துக்கு எளிதாகத் தெரிவிக்கவும் உதவுகிறது.",
     tank: {
       title: "உங்கள் குளம், ஒவ்வொரு நாளும்",
       text: "நீர்ப்பாசனத் திணைக்களத்தின் தினசரி அளவீடுகளின்படி உங்கள் குளம் எவ்வளவு நிரம்பியுள்ளது, எவ்வளவு வேகமாக மாறுகிறது, வான் பாய்கிறதா என்பதைப் பாருங்கள்.",
@@ -665,7 +665,7 @@ const ta: Dict = {
       text: "நீர் வழங்கல், வெள்ள எச்சரிக்கைகள், ஆலோசனைகள் எந்தத் தொலைபேசிக்கும் SMS மூலம் வரும். வெள்ளம் நெருங்குவது போன்ற தீவிர நிலைகளில் விவசாயிகளுக்குத் தானியங்கி குரல் அழைப்பும் வரும்.",
       smsTitle: "நீர் வழங்கல் அறிவிப்பு",
       smsBody: "Kalawewa · இடக்கரை கால்வாய்க்கு நீர் வழங்கல் அக். 10 தொடங்குகிறது. உங்கள் வயல் வாய்க்கால்களைத் தயார் செய்யுங்கள்.",
-      callLabel: "உள்வரும் அழைப்பு · யால-மகா வெள்ள எச்சரிக்கை",
+      callLabel: "உள்வரும் அழைப்பு · யால மகா வெள்ள எச்சரிக்கை",
       callBody: "இன்றிரவு யான் ஓயா பெருக்கெடுக்கலாம். கால்நடைகளையும் பம்புகளையும் மேட்டு நிலத்துக்கு நகர்த்துங்கள்.",
     },
   },
@@ -699,7 +699,7 @@ const ta: Dict = {
     days14: "14 நாட்கள்",
   },
   helps: {
-    title: "யால-மகா உதவி உதவும் இடங்கள்",
+    title: "யால மகா உதவும் இடங்கள்",
     sub: "குளம் முதல் கால்வாய் வரை, உங்கள் மொழியில்",
     cards: [
       { title: "நாச்சதூவ குளம்", place: "அநுராதபுரம்", text: "தினமும் அளவிடப்படும், நீங்கள் பின்தொடரக்கூடிய குளங்களும் நீர்த்தேக்கங்களும்" },
@@ -740,7 +740,7 @@ const ta: Dict = {
   tour: {
     badge: "நெருக்கமான பார்வை",
     title: "செயலியின் உள்ளே",
-    sub: "யால-மகா உதவி செயலியின் உண்மையான திரைகள்",
+    sub: "யால மகா செயலியின் உண்மையான திரைகள்",
     prev: "முந்தைய திரை",
     next: "அடுத்த திரை",
     slides: [
@@ -773,7 +773,7 @@ const ta: Dict = {
     items: [
       [
         "செயலியை எங்கே பெறலாம்?",
-        "யால-மகா உதவி Android, iPhone ஆகியவற்றுக்கான கைபேசிச் செயலி. Google Play அல்லது App Store இலிருந்து பதிவிறக்கி, உங்கள் தொலைபேசி எண்ணுடன் உள்நுழையுங்கள்.",
+        "யால மகா Android, iPhone ஆகியவற்றுக்கான கைபேசிச் செயலி. Google Play அல்லது App Store இலிருந்து பதிவிறக்கி, உங்கள் தொலைபேசி எண்ணுடன் உள்நுழையுங்கள்.",
       ],
       [
         "குளம், ஆறு, கால்வாய் தரவுகள் எங்கிருந்து வருகின்றன?",

@@ -36,7 +36,7 @@ export default function SiteRelative7({ t }: { t: Dict }) {
           </div>
           <div className="site-flex w-full flex-col items-center">
             <div data-reveal="soft" style={css({ "--delay": "420ms" })} className="w-90 max-w-full site-md-mt-12 site-mt-6 rounded-2xl border border-white/10 bg-white/10 p-5 text-left text-white backdrop-blur-md">
-              <p className="text-xs text-default-300">SMS · YalaMaha · 07:30</p>
+              <p className="text-xs text-default-300">SMS · Yala Maha · 07:30</p>
               <p className="mt-2 text-base font-semibold">{t.features.alerts.smsTitle}</p>
               <p className="mt-1 text-sm leading-relaxed text-default-200">
                 {t.features.alerts.smsBody}
