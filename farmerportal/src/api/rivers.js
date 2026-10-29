@@ -17,7 +17,7 @@ export function fetchRivers() {
           lat: num(s.latitude),
           lng: num(s.longitude),
           level: num(s.water_level),
-          previous: num(s.previous_level),
+          prev: num(s.prev_level),
           alert: num(s.alert_level),
           minor: num(s.minor_flood_level),
           major: num(s.major_flood_level),
@@ -44,4 +44,41 @@ export function withNearestGauge(rivers, pin) {
     }
     return { ...river, gauge: best?.station.name ?? null, d: best?.d ?? null };
   });
+}
+
+// Gauges further than this from the farm don't say much about its flood risk.
+const NEAR_M = 30000;
+
+// 0 normal, 1 alert, 2 minor flood, 3 major flood: the Irrigation Department's gauge thresholds.
+export const FLOOD_MAX = 3;
+export function floodLevel(s) {
+  if (s.level == null) return null;
+  if (s.major != null && s.level >= s.major) return 3;
+  if (s.minor != null && s.level >= s.minor) return 2;
+  if (s.alert != null && s.level >= s.alert) return 1;
+  return 0;
+}
+
+// Change since a reading 2-24 h earlier; under 5 cm counts as steady.
+export function trend(s) {
+  if (s.level == null || s.prev == null) return null;
+  const d = s.level - s.prev;
+  return d >= 0.05 ? 'rising' : d <= -0.05 ? 'falling' : 'steady';
+}
+
+// The gauge nearest the farm (within NEAR_M), preferring the farm's own river if it has one.
+export function nearestGauge(rivers, pin, riverName) {
+  if (!pin) return null;
+  const pick = (list) => {
+    let best = null;
+    for (const r of list) {
+      for (const s of r.stations) {
+        const d = haversine(pin, s);
+        if (d <= NEAR_M && (!best || d < best.d)) best = { river: r.name, ...s, d };
+      }
+    }
+    return best;
+  };
+  const own = riverName ? rivers.filter((r) => r.name === riverName) : [];
+  return pick(own) || pick(rivers);
 }

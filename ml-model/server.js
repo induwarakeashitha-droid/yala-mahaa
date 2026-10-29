@@ -234,6 +234,13 @@ app.post("/api/forecast/predict", async (req, res) => {
       is_major,
     };
 
+    // gaps over 3 days leave NaN in the fill history, the trees can't use that
+    if (!Object.values(featureRow).every(Number.isFinite)) {
+      return res.status(400).json({
+        error: "At least 15 days of recent daily storage readings are required (the last 15 days have gaps).",
+      });
+    }
+
     const rawDelta = predictTreeEnsemble(featureRow);
     const predictedFill = Math.min(1.2, Math.max(0.0, fillNow + rawDelta));
     const change = predictedFill - fillNow;

@@ -126,7 +126,9 @@ a { color: inherit; }
   position: relative; width: 100%; height: 100dvh; background: var(--bg); background-image: var(--sky-wash); overflow: hidden;
   display: flex; flex-direction: column;
 }
-@media (min-width: 520px) {
+/* The phone mock-up is only for previewing on a computer (mouse + big screen). Phones and tablets,
+   upright or turned sideways, always fill the screen. */
+@media (min-width: 520px) and (min-height: 600px) and (hover: hover) and (pointer: fine) {
   .stage { padding: 24px; background: linear-gradient(135deg, #dccbff 0%, #c4d6ff 45%, #a8dcfa 100%); }
   .device { width: 400px; height: min(860px, calc(100dvh - 48px)); border-radius: 48px; box-shadow: 0 0 0 1.5px rgba(255,255,255,.85), 0 30px 80px rgba(60,80,150,.25); }
 }
@@ -135,7 +137,7 @@ a { color: inherit; }
 .viewport.has-nav { padding-bottom: var(--nav-h); }
 @keyframes pageIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-.screen { min-height: 100%; padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; }
+.screen { min-height: 100%; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 760px; margin-inline: auto; }
 .center-screen { justify-content: flex-start; }
 
 /* ---------- utilities ---------- */
@@ -282,6 +284,10 @@ a { color: inherit; }
 
 /* aerial field art */
 .aerial { position: relative; overflow: hidden; flex: none; }
+/* Phone on its side: keep big photos to half the screen so the text below still shows */
+@media (orientation: landscape) and (max-height: 520px) {
+  .aerial { max-height: 50dvh; }
+}
 .aer-a { background-color: #5c7a2f; background-image: repeating-linear-gradient(90deg, rgba(0,0,0,.14) 0 2px, transparent 2px 10px), linear-gradient(140deg, #7a9a3c, #4a6624); }
 .aer-b { background-color: #6d8f3a; background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.10) 0 1px, transparent 1px 8px), repeating-linear-gradient(90deg, rgba(0,0,0,.12) 0 2px, transparent 2px 14px), linear-gradient(160deg, #8fb24a, #557a2a); }
 .aer-hero { background-color: #4f6c27; background-image: repeating-linear-gradient(72deg, rgba(0,0,0,.16) 0 2px, transparent 2px 12px), repeating-linear-gradient(-18deg, rgba(255,255,255,.07) 0 1px, transparent 1px 20px), linear-gradient(150deg, #86a843, #3e5a1f); }
@@ -328,6 +334,15 @@ a { color: inherit; }
 .ob-art > .aerial { flex: 1; height: auto !important; }
 .ob-copy { display: flex; flex-direction: column; gap: 8px; animation: rise .35s .05s both; }
 .ob-copy p { margin: 0; }
+/* Phone on its side: photo on the left, text and buttons on the right */
+@media (orientation: landscape) and (max-height: 520px) {
+  .onboard { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr auto auto; column-gap: 24px; row-gap: 14px; max-width: 960px; }
+  .onboard > :first-child { grid-column: 1 / -1; }
+  .onboard > .ob-art { grid-column: 1; grid-row: 2 / span 3; min-height: 0; max-height: none; }
+  .onboard > .ob-art > .aerial { max-height: none; }
+  .onboard > :not(:first-child):not(.ob-art) { grid-column: 2; }
+  .onboard > .ob-copy { align-self: end; }
+}
 .dots { display: flex; gap: 6px; }
 .dot { position: relative; width: 10px; height: 10px; border-radius: 5px; border: 0; background: var(--border-strong); padding: 0; transition: width .25s, background .25s; }
 .dot::before { content: ''; position: absolute; inset: -17px -3px; } /* 44px-tall hit area */
@@ -440,7 +455,7 @@ a { color: inherit; }
 
 /* ---------- sheet / toasts ---------- */
 .sheet-backdrop { position: absolute; inset: 0; background: rgba(14,33,62,.45); z-index: 40; display: flex; align-items: flex-end; animation: fade .2s both; }
-.sheet { width: 100%; max-height: 85%; overflow-y: auto; background: var(--bg); border-radius: 32px 32px 0 0; padding: 10px 20px 28px; display: flex; flex-direction: column; gap: 14px; animation: up .28s cubic-bezier(.2, .9, .3, 1) both; }
+.sheet { width: 100%; max-width: 640px; margin-inline: auto; max-height: 85%; overflow-y: auto; background: var(--bg); border-radius: 32px 32px 0 0; padding: 10px 20px 28px; display: flex; flex-direction: column; gap: 14px; animation: up .28s cubic-bezier(.2, .9, .3, 1) both; }
 .sheet-handle { width: 44px; height: 5px; border-radius: 3px; background: var(--border); margin: 0 auto 4px; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes up { from { transform: translateY(100%); } }
@@ -458,7 +473,8 @@ a { color: inherit; }
 /* ---------- bottom nav ---------- */
 /* Floating glass capsule: translucent so content shows through, solid when transparency is reduced. */
 .bottom-nav {
-  position: absolute; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); height: 68px; border-radius: 34px;
+  position: absolute; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 32px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  bottom: max(16px, env(safe-area-inset-bottom)); height: 68px; border-radius: 34px;
   background: rgba(249,250,252,.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); backdrop-filter: blur(20px) saturate(1.8);
   box-shadow: 0 8px 28px rgba(14,33,62,.18), inset 0 0 0 1px rgba(255,255,255,.7), 0 0 0 1px rgba(14,33,62,.06);
   display: flex; align-items: center; gap: 2px; padding: 0 6px; z-index: 30;
@@ -477,7 +493,7 @@ a { color: inherit; }
 .map-top { position: absolute; left: 16px; right: 16px; top: 20px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; z-index: 1001; }
 .map-title { font-size: 22px; font-weight: 600; color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,.5); }
 .map-tools { position: absolute; right: 16px; top: 150px; z-index: 1001; display: flex; flex-direction: column; gap: 8px; }
-.water-sheet { position: relative; margin: 0 10px; background: rgba(24,48,84,.96); color: #fff; border-radius: 30px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.water-sheet { position: relative; margin: 0 auto; width: calc(100% - 20px - env(safe-area-inset-left) - env(safe-area-inset-right)); max-width: 760px; background: rgba(24,48,84,.96); color: #fff; border-radius: 30px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 .chart { height: 120px; display: flex; align-items: flex-end; gap: 6px; position: relative; margin-top: 18px; }
 .chart-line { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,.3); }
 .chart-line span { position: absolute; right: 0; top: -16px; font-size: 11px; color: var(--dim); }
@@ -574,7 +590,7 @@ a { color: inherit; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
 .lg-obs { background: #fff; }
-.lg-pred { background: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 9px); }
+.legend i.lg-pred { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
 .lg-band { height: 10px !important; background: rgba(147,210,238,.25); }
 .fc-chart { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: pointer; user-select: none; }
 .fc-chart.compact { cursor: inherit; }
@@ -600,3 +616,6 @@ a { color: inherit; }
 .forecast-mini { gap: 10px; }
 .spin { animation: spin .9s linear infinite; }
 .icon-tile.sm-tile { width: 36px; height: 36px; border-radius: 12px; }
+
+/* "My reports" rows open to show the report and its photos */
+button.report-row { width: 100%; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }

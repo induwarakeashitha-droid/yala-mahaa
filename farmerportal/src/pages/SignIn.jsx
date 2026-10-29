@@ -7,13 +7,13 @@ import { login } from '../api/auth.js';
 
 // Second step for a number that already has an account: the API signs in with phone + NIC.
 export default function SignIn() {
-  const { t, pendingPhone, update, showToast } = useApp();
+  const { t, pendingPhone, user, update, showToast } = useApp();
   const navigate = useNavigate();
   const [nic, setNic] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (!pendingPhone) return <Navigate to="/login" replace />;
+  if (!pendingPhone) return <Navigate to={user?.farmerId ? '/home' : '/login'} replace />;
 
   const submit = async (e) => {
     e.preventDefault();

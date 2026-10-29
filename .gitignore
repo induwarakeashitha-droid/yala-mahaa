@@ -10,3 +10,11 @@ ml-model/.venv/
 
 # Local tool settings
 .ua/
+
+# Photos attached to canal reports (never commit farmers' photos)
+api/uploads/
+
+# flood model downloads (dmc pdfs, rain history, datasets)
+flood-model/data/
+__pycache__/
+.env.production

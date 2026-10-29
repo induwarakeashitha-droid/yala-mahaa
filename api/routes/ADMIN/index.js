@@ -1,6 +1,4 @@
-// Everything under /admin. Only /admin/auth/login, /refresh_token and /logout are open;
-// every other route needs an admin access token (requireAdmin). Farmer tokens never pass:
-// they are signed with a different secret and lack the admin audience and role.
+// everything under /admin
 const express = require('express')
 const { requireAdmin, canEdit } = require('../../middleware/requireAdmin.js')
 const adminauthrouter = require('./authroutes.js')
@@ -12,12 +10,14 @@ const adminreportrouter = require('./reportroutes.js')
 
 const adminrouter =express.Router()
 
-adminrouter.use('/auth', adminauthrouter)
-adminrouter.use('/farmers', requireAdmin, farmerrouter)  
-adminrouter.use('/db',requireAdmin, dbrouter)
-adminrouter.use('/data', requireAdmin, datarouter)
-adminrouter.use('/reports', requireAdmin, (req, res, next) => (req.method === 'GET' ? next() : canEdit(req, res, next)), adminreportrouter)
 
+adminrouter.use('/auth', adminauthrouter)
+adminrouter.use('/farmers', requireAdmin, farmerrouter)
+adminrouter.use('/db',requireAdmin, dbrouter)     //admin auth middleware
+adminrouter.use('/data', requireAdmin, datarouter)
+adminrouter.use('/reports', requireAdmin, adminreportrouter)
+
+// officers can read sms history but not send
 adminrouter.use('/sms', requireAdmin, (req, res, next) => (req.method === 'GET' ? next() : canEdit(req, res, next)), smsrouter)
 
 

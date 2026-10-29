@@ -13,8 +13,14 @@ function load() {
     if (saved?.user && !saved.user.farmerId && !saved.user.pendingRegistration) {
       return { ...saved, user: null, farm: null };
     }
-    // Sample alerts and reports from older versions; both now come from live data
-    if (saved) { delete saved.alerts; delete saved.reports; delete saved.smsEnabled; }
+    // Drop the old sample alerts; live alerts come from api/alerts.js now. Only the app's own notes are kept.
+    if (saved?.alerts) saved.alerts = saved.alerts.filter((a) => a.kind === 'farm');
+    // The SMS setting is saved on the server now (farm.smsEnabled)
+    if (saved) delete saved.smsEnabled;
+    // Canal names saved with a middle dot ("Kaudulla · Lower") are now written with a dash
+    for (const place of [saved?.farm, saved?.draft]) {
+      if (place?.water?.name) place.water.name = place.water.name.replaceAll('·', '-');
+    }
     return saved;
   } catch {
     return null;
@@ -47,7 +53,8 @@ const defaults = {
   user: null, // { phone, farmerId } once signed in; { phone, pendingRegistration } between OTP and registration
   farm: null, // registered farm
   draft: emptyDraft(),
-  readAlerts: [], // ids of alerts the farmer has opened (api/alerts.js)
+  alerts: [], // the app's own notes (farm registered); live alerts are in api/alerts.js
+  readAlerts: [], // ids of live alerts the farmer has opened
 };
 
 const AppContext = createContext(null);

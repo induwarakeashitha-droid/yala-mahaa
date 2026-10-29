@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { AlertTriangle, Droplets, RefreshCw } from 'lucide-react'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { cn, formatDateTime } from '../../utils/format'
 import { useData } from '../../context/DataContext'
 import { LoadingScreen } from '../ui/LoadingScreen'
@@ -86,7 +86,7 @@ export function AppLayout() {
           <footer className="app-footer">
             <span>
               <span className="footer-mark">
-                <Droplets size={13} />
+                <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" draggable="false" />
               </span>
               Yala Maha
             </span>

@@ -35,8 +35,8 @@ export default function Login() {
           <span className="fw600 f16" style={{ color: '#fff' }}>{t('appName')}</span>
         </div>
         <div className="art-float" style={{ left: 16, right: 16, bottom: 16 }}>
-          <div className="f13 fw600" style={{ color: 'var(--accent)' }}>Mahaweli B · {t('farmerPortal')}</div>
-          <div className="f14" style={{ marginTop: 4, fontFamily: 'var(--font-system), Noto Sans Sinhala, Noto Sans Tamil' }}>ගොවි ද්වාරය · விவசாயி தளம்</div>
+          <div className="f13 fw600" style={{ color: 'var(--accent)' }}>Mahaweli B - {t('farmerPortal')}</div>
+          <div className="f14" style={{ marginTop: 4, fontFamily: 'var(--font-system), Noto Sans Sinhala, Noto Sans Tamil' }}>ගොවි ද්වාරය - விவசாயி தளம்</div>
         </div>
       </Aerial>
 

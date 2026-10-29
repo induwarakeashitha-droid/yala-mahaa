@@ -78,12 +78,23 @@ export const slugify = (value = '') =>
 
 export const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
+// local time in a form spreadsheets read as a date, blank if missing
+export const csvTime = (date) => {
+  if (!date) return ''
+  const d = new Date(date)
+  return `${d.toLocaleDateString('en-CA')} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+// returns false when there's nothing to download
 export const downloadCsv = (filename, rows) => {
-  if (!rows?.length) return
+  if (!rows?.length) return false
   const headers = Object.keys(rows[0])
   const escape = (cell) => {
-    const text = cell === null || cell === undefined ? '' : String(cell)
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+    let text = cell === null || cell === undefined ? '' : String(cell)
+    // Text farmers typed could start with = + - @ and run as a formula in Excel (CSV injection).
+    // A leading apostrophe makes the spreadsheet show it as plain text. Real numbers are left alone.
+    if (typeof cell === 'string' && /^[=+\-@\t\r]/.test(text) && !/^-?\d+(\.\d+)?$/.test(text)) text = `'${text}`
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
   }
   const csv = [
     headers.join(','),
@@ -97,7 +108,9 @@ export const downloadCsv = (filename, rows) => {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+  // revoking straight after click() can cancel the download in some browsers
+  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  return true
 }
 
 export const seededRandom = (seed) => {

@@ -41,8 +41,8 @@ export default function Fields() {
                   <Icon name={c.category === 'paddy' ? 'leaf' : 'chilli'} size={22} color={CROP_CATALOG[c.category].color} />
                 </div>
                 <div className="grow min0">
-                  <div className="f12 muted">{t('crop')} {i + 1} · {CROP_CATALOG[c.category].label}</div>
-                  <div className="f17 fw600">{c.type} · {c.variety}</div>
+                  <div className="f12 muted">{t('crop')} {i + 1} - {CROP_CATALOG[c.category].label}</div>
+                  <div className="f17 fw600">{c.type} - {c.variety}</div>
                 </div>
               </div>
               <dl className="kv-list">

@@ -21,7 +21,7 @@ import {
   Wheat,
   X,
 } from 'lucide-react'
-import { WATER_SOURCE_LABELS, farmerFromApi, formatPhone } from '../data/farmers'
+import { WATER_SOURCE_LABELS, cropName, csvPhone, farmerFromApi, formatPhone } from '../data/farmers'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -44,10 +44,9 @@ const STATUS_TONE = {
 }
 
 const SCHEDULE_TONE = {
-  Releasing: 'success',
-  Starting: 'info',
-  Scheduled: 'warning',
-  Completed: 'neutral',
+  'Receiving water': 'success',
+  'Not started': 'warning',
+  Finished: 'neutral',
 }
 
 const EDIT_FIELDS = ['full_name', 'phone', 'address', 'district', 'division', 'primary_crop']
@@ -147,9 +146,9 @@ export function FarmerPortal() {
     const search = scheduleQuery.trim().toLowerCase()
     return IRRIGATION_SCHEDULES.filter((schedule) => {
       if (search && !`${schedule.system} ${schedule.id}`.toLowerCase().includes(search)) return false
-      if (scheduleStatus === 'releasing' && !['Releasing', 'Starting'].includes(schedule.status)) return false
-      if (scheduleStatus === 'scheduled' && schedule.status !== 'Scheduled') return false
-      if (scheduleStatus === 'completed' && schedule.status !== 'Completed') return false
+      if (scheduleStatus === 'releasing' && schedule.status !== 'Receiving water') return false
+      if (scheduleStatus === 'scheduled' && schedule.status !== 'Not started') return false
+      if (scheduleStatus === 'completed' && schedule.status !== 'Finished') return false
       return true
     })
   }, [IRRIGATION_SCHEDULES, scheduleQuery, scheduleStatus])
@@ -189,12 +188,13 @@ export function FarmerPortal() {
         rows.push(...result.data.map(farmerFromApi))
         if (rows.length >= result.total || result.data.length === 0) break
       }
+      if (!rows.length) return toast('No farmers match the current filters.', { tone: 'error' })
       downloadCsv(
-        'YalaMaha-farmer-registry.csv',
+        `YalaMaha-farmer-registry-${new Date().toLocaleDateString('en-CA')}.csv`,
         rows.map((farmer) => ({
           'Farm ID': farmer.farm_id,
           Name: farmer.name,
-          Phone: farmer.phoneLabel,
+          Phone: csvPhone(farmer.phone),
           District: farmer.district,
           Division: farmer.division,
           'Water source': farmer.scheme,
@@ -202,7 +202,7 @@ export function FarmerPortal() {
           'Land (acres)': farmer.landAcres ?? '',
           Crops: farmer.crop_count,
           Status: farmer.status,
-          Registered: farmer.joinedLabel,
+          Registered: farmer.created_at ? new Date(farmer.created_at).toLocaleDateString('en-CA') : '',
         })),
       )
       toast(`${rows.length} farmers exported as CSV.`, { title: 'Export complete', tone: 'success' })
@@ -409,7 +409,7 @@ export function FarmerPortal() {
               <div className="table-footer">
                 <span>
                   Water sources:{' '}
-                  {FARMER_WATER_SOURCES.map((row) => `${row.label} ${row.farmers}`).join(' · ') || '—'}
+                  {FARMER_WATER_SOURCES.map((row) => `${row.label} ${row.farmers}`).join(' - ') || '—'}
                 </span>
               </div>
             </Card>
@@ -418,7 +418,7 @@ export function FarmerPortal() {
               <CardHeader
                 icon={Leaf}
                 title="Crops grown"
-                subtitle="Share of farmers growing each crop (a farmer can grow several)"
+                subtitle="How many farmers grow each kind of crop. A farmer can grow several, so the counts can add up to more than the total."
               />
               <div className="farmer-crop-body">
                 <CropDonut
@@ -433,7 +433,9 @@ export function FarmerPortal() {
                         <i style={{ background: crop.color }} />
                         {crop.name}
                       </span>
-                      <strong>{crop.value}%</strong>
+                      <strong>
+                        {formatNumber(crop.farmers)} farmer{crop.farmers === 1 ? '' : 's'}
+                      </strong>
                     </div>
                   ))}
                 </div>
@@ -630,7 +632,7 @@ export function FarmerPortal() {
             <div>
               <strong>Mahaweli water issue schedule</strong>
               <span>
-                {SCHEDULE_SUMMARY.total} canal sections under {SCHEDULE_SUMMARY.schemes} schemes ·{' '}
+                {SCHEDULE_SUMMARY.total} canal sections under {SCHEDULE_SUMMARY.schemes} schemes -{' '}
                 {formatNumber(Math.round(SCHEDULE_SUMMARY.totalArea))} hectares to cultivate
               </span>
             </div>
@@ -668,13 +670,14 @@ export function FarmerPortal() {
                   size="sm"
                   icon={Download}
                   onClick={() => {
+                    if (!IRRIGATION_SCHEDULES.length) return toast('No water issue schedule loaded.', { tone: 'error' })
                     downloadCsv(
                       'YalaMaha-water-issue-schedule.csv',
                       IRRIGATION_SCHEDULES.map((schedule) => ({
                         Scheme: schedule.scheme,
                         Section: schedule.section ?? '',
-                        'Water from': schedule.startLabel,
-                        'Water until': schedule.endLabel,
+                        'Water from': schedule.start.toLocaleDateString('en-CA'),
+                        'Water until': schedule.end.toLocaleDateString('en-CA'),
                         'Duration (days)': schedule.durationDays,
                         'Paddy target (ha)': schedule.paddyArea,
                         'Total target (ha)': schedule.totalArea,
@@ -731,7 +734,7 @@ export function FarmerPortal() {
                       {schedule.crops.map((crop) => (
                         <span className="crop-pill" key={`${schedule.id}-${crop.name}`}>
                           {crop.name}
-                          {crop.duration ? ` · ${crop.duration}d` : ''}
+                          {crop.duration ? ` - ${crop.duration}d` : ''}
                         </span>
                       ))}
                     </div>
@@ -752,9 +755,9 @@ export function FarmerPortal() {
                       label={`${schedule.progress}%`}
                     />
                     <small>
-                      {schedule.status === 'Scheduled'
+                      {schedule.status === 'Not started'
                         ? `Starts ${formatDate(schedule.start, { year: undefined })}`
-                        : schedule.status === 'Completed'
+                        : schedule.status === 'Finished'
                           ? 'Finished'
                           : `${schedule.progress}% of the water issue period gone`}
                     </small>
@@ -795,7 +798,7 @@ export function FarmerPortal() {
         open={Boolean(selected)}
         onClose={closeFarmer}
         title={selected?.name || 'Farmer'}
-        description={selected ? `${selected.farm_id} · Registered ${selected.joinedLabel}` : ''}
+        description={selected ? `${selected.farm_id} - Registered ${selected.joinedLabel}` : ''}
         icon={UserRound}
         size="lg"
         footer={
@@ -901,7 +904,7 @@ export function FarmerPortal() {
               <div>
                 <strong>{selected.name}</strong>
                 <span>
-                  {selected.farm_id} · Registered {selected.joinedLabel}
+                  {selected.farm_id} - Registered {selected.joinedLabel}
                 </span>
                 <Badge tone={STATUS_TONE[selected.status]} dot>
                   {selected.status}
@@ -955,13 +958,13 @@ export function FarmerPortal() {
                   {selected.farm.crops.map((crop, index) => (
                     <div key={index}>
                       <span>
-                        {crop.crop_type}
-                        {crop.variety ? ` · ${crop.variety}` : ''}
-                        {crop.category ? ` (${crop.category})` : ''}
+                        {cropName(crop.crop_type)}
+                        {crop.variety ? ` - ${crop.variety}` : ''}
+                        {crop.category && crop.category !== crop.crop_type ? ` (${cropName(crop.category)})` : ''}
                       </span>
                       <strong>
                         {Number(crop.acres)} ac
-                        {crop.last_yield !== null ? ` · last yield ${Number(crop.last_yield)} ${crop.yield_unit || ''}` : ''}
+                        {crop.last_yield !== null ? ` - last yield ${Number(crop.last_yield)} ${crop.yield_unit || ''}` : ''}
                       </strong>
                     </div>
                   ))}

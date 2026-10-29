@@ -1,8 +1,8 @@
-# Yala-Maha
+# Yala Maha
 **Advanced Hydrological Monitoring, Farmer Portal & Agricultural Early Warning System for Mahaweli B Zone, Sri Lanka**
 
 ## Overview
-Yala-Maha is a comprehensive, modular web application designed for hydrological monitoring, farmer registration, and agricultural early warning systems in Sri Lanka's Mahaweli B Zone (Palugaswewa / Kudawewa system). The platform integrates real-time river monitoring, schematic GIS farm coverage mapping, multilingual Text.lk SMS dispatch, and a modern, mobile-responsive farmer self-service portal.
+Yala Maha is a comprehensive, modular web application designed for hydrological monitoring, farmer registration, and agricultural early warning systems in Sri Lanka's Mahaweli B Zone (Palugaswewa / Kudawewa system). The platform integrates real-time river monitoring, schematic GIS farm coverage mapping, multilingual Text.lk SMS dispatch, and a modern, mobile-responsive farmer self-service portal.
 
 **Version:** 1.0  
 **Primary Focus:** Farmland management, water resource optimization, agricultural sustainability, disaster mitigation  
@@ -425,7 +425,7 @@ node test-sms.js 0774817583
 node test-sms.js 0774817583 --live
 
 # 3. Custom message test:
-node test-sms.js 0774817583 "Hello from Yala-Maha" --live
+node test-sms.js 0774817583 "Hello from Yala Maha" --live
 ```
 
 ### Testing API Endpoints via PowerShell
@@ -475,7 +475,7 @@ Invoke-RestMethod -Method Post http://localhost:8005/api/sms/send-otp -ContentTy
 - **Text.lk:** For Sri Lankan mobile SMS gateway infrastructure.
 
 ---
-*Yala-Maha · Empowering Sri Lankan Agriculture Through Technology*
+*Yala Maha - Empowering Sri Lankan Agriculture Through Technology*
 
 #### Colab notebook data source
 `yalamahatankdataml.ipynb` trains the ML model on tank data from the deployed API:

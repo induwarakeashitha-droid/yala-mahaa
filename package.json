@@ -1,7 +1,7 @@
 {
   "name": "yala-maha",
   "version": "1.0.0",
-  "description": "Yala-Maha · shared root package (runs the ML forecast service). The admin portal is in adminportal/, the farmer portal in farmerportal/.",
+  "description": "Yala Maha - shared root package (runs the ML forecast service). The admin portal is in adminportal/, the farmer portal in farmerportal/.",
   "scripts": {
     "ml": "node ml-model/server.js"
   },
@@ -13,7 +13,7 @@
     "irrigation",
     "schematic-maps"
   ],
-  "author": "Yala-Maha Team",
+  "author": "Yala Maha Team",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.6",

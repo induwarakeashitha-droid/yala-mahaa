@@ -87,7 +87,7 @@ export default function Otp() {
       <div className="icon-tile accent"><Icon name="sms" size={26} /></div>
       <div className="col gap6">
         <h1 className="h1">{t('enterCode')}</h1>
-        <div className="f15 muted">{t('sentTo')} <b className="ink">{formatPhone(pendingPhone)}</b> · <button type="button" className="link-btn" onClick={() => navigate('/login')}>{t('change')}</button></div>
+        <div className="f15 muted">{t('sentTo')} <b className="ink">{formatPhone(pendingPhone)}</b> - <button type="button" className="link-btn" onClick={() => navigate('/login')}>{t('change')}</button></div>
       </div>
 
       <div className={`otp ${error ? 'shake' : ''}`} role="group" aria-label="6-digit code">

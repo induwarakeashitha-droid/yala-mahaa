@@ -8,28 +8,28 @@ const STATUS_META = {
     label: 'Critical',
     tone: 'critical',
     range: 'Below 10%',
-    description: 'Immediate intervention required',
+    description: 'Less than a tenth of usable storage left',
   },
   low: {
     key: 'low',
     label: 'Low',
     tone: 'warning',
     range: '10 – 25%',
-    description: 'Restrict releases, monitor daily',
+    description: 'Between 10% and 25% of usable storage',
   },
   watch: {
     key: 'watch',
-    label: 'Watch',
+    label: 'Moderate',
     tone: 'info',
     range: '25 – 50%',
-    description: 'Within seasonal operating range',
+    description: 'Between 25% and 50% of usable storage',
   },
   healthy: {
     key: 'healthy',
     label: 'Healthy',
     tone: 'success',
     range: 'Above 50%',
-    description: 'Storage at comfortable level',
+    description: 'Half full or more',
   },
   unknown: {
     key: 'unknown',
@@ -50,11 +50,17 @@ export const getTankStatus = (percent) => {
   return 'healthy'
 }
 
+// Spelling fixes for district names as they come in the Irrigation Department feed
+const DISTRICT_SPELLING = { ANURADAPURA: 'Anuradhapura' }
+
 const normalizeDistrict = (district) => {
   if (!district) return 'Unknown'
-  if (district === 'GALLE (MATARA)') return 'Matara'
-  return titleCase(district)
+  return DISTRICT_SPELLING[district] || titleCase(district)
 }
+
+// A reading older than this many days is flagged in the register
+const STALE_DAYS = 2
+const daysOld = (date) => (date ? Math.floor((Date.now() - new Date(`${date}T00:00:00`)) / 86400000) : null)
 
 const num = (value) => (value === null || value === undefined || value === '' ? null : Number(value))
 
@@ -73,7 +79,7 @@ export function buildTanks(rows = [], daily = []) {
         ...row,
         dbId: row.id,
         id: `TNK-${String(row.id).padStart(3, '0')}`,
-        name: titleCase(row.name),
+        name: row.name,
         district: normalizeDistrict(row.district),
         division: titleCase(row.division || ''),
         type: titleCase(row.type || ''),
@@ -81,6 +87,8 @@ export function buildTanks(rows = [], daily = []) {
         longitude: num(row.longitude),
         percent: percent ?? 0,
         hasReading: percent !== null,
+        readingAge: daysOld(row.reading_date),
+        stale: percent === null || daysOld(row.reading_date) > STALE_DAYS,
         status,
         statusMeta: STATUS_META[status],
         isSpilling: row.is_spilling === 'Yes',

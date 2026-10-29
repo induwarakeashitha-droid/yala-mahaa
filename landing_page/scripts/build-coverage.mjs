@@ -19,7 +19,7 @@ const entries = [
   ...reservoirs.map((r) => ({ name: r.name, type: "tank", detail: [title(r.division), title(r.district)].filter(Boolean).join(", ") })),
   ...[...rivers].map(([name, stations]) => ({ name, type: "river", detail: `Gauges: ${[...stations].sort().join(", ")}` })),
   ...canals.map((c) => ({
-    name: c.section ? `${c.tank_name} · ${c.section}` : `${c.tank_name} canals`,
+    name: c.section ? `${c.tank_name} - ${c.section}` : `${c.tank_name} canals`,
     type: "canal",
     detail: `${c.tank_name} scheme`,
   })),

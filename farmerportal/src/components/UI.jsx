@@ -44,6 +44,7 @@ const STATUS = {
   watch: ['warn', 'warn'], low: ['warn', 'warn'], lowWater: ['warn', 'warn'], inProgress: ['warn', 'clock'],
   critical: ['danger', 'stop'], spill: ['danger', 'stop'],
   received: ['info', 'inbox'],
+  forwarded: ['info', 'send'], reportClosed: ['warn', 'close'],
 };
 
 export function StatusLabel({ status, children }) {
@@ -63,7 +64,7 @@ export function LangSwitch({ compact }) {
     return (
       <button type="button" className="lang-chip" onClick={() => update({ lang: nextLang.code })} aria-label="Change language">
         <b>{LANGS[idx].short}</b>
-        <span>{LANGS.filter((l) => l.code !== lang).map((l) => l.short).join(' · ')}</span>
+        <span>{LANGS.filter((l) => l.code !== lang).map((l) => l.short).join(' - ')}</span>
       </button>
     );
   }

@@ -16,7 +16,7 @@ export function buildSchedules(rows = [], now = new Date()) {
       const elapsed = Math.round((today - start) / 86400000)
       const progress = Math.min(100, Math.max(0, (elapsed / totalDays) * 100))
       const status =
-        today < start ? 'Scheduled' : today > end ? 'Completed' : progress < 12 ? 'Starting' : 'Releasing'
+        today < start ? 'Not started' : today > end ? 'Finished' : 'Receiving water'
       const paddyArea = num(row.paddy_target_area) ?? 0
       const otherArea = num(row.other_crops_target_area) ?? 0
       const crops = [
@@ -26,7 +26,7 @@ export function buildSchedules(rows = [], now = new Date()) {
       return {
         id: `IRS-${String(row.id).padStart(2, '0')}`,
         no: row.no,
-        system: row.section ? `${row.tank_name} · ${row.section}` : row.tank_name,
+        system: row.section ? `${row.tank_name} - ${row.section}` : row.tank_name,
         scheme: row.tank_name,
         section: row.section,
         start,
@@ -50,8 +50,8 @@ export function buildSchedules(rows = [], now = new Date()) {
     SCHEDULE_SUMMARY: {
       total: IRRIGATION_SCHEDULES.length,
       schemes: new Set(IRRIGATION_SCHEDULES.map((item) => item.scheme)).size,
-      releasing: IRRIGATION_SCHEDULES.filter((item) => item.status === 'Releasing' || item.status === 'Starting').length,
-      scheduled: IRRIGATION_SCHEDULES.filter((item) => item.status === 'Scheduled').length,
+      releasing: IRRIGATION_SCHEDULES.filter((item) => item.status === 'Receiving water').length,
+      scheduled: IRRIGATION_SCHEDULES.filter((item) => item.status === 'Not started').length,
       totalArea: IRRIGATION_SCHEDULES.reduce((total, item) => total + item.totalArea, 0),
       paddyArea: IRRIGATION_SCHEDULES.reduce((total, item) => total + item.paddyArea, 0),
     },

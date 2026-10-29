@@ -1,4 +1,4 @@
-import { formatDateTime } from '../utils/format'
+import { formatDate, formatDateTime } from '../utils/format'
 
 const list = (items, count = 3) => {
   const names = items.slice(0, count).map((item) => item.name)
@@ -7,11 +7,11 @@ const list = (items, count = 3) => {
 }
 
 // Alerts worked out from the latest readings; nothing here is stored
-export function buildAlerts({ AT_RISK_TANKS, SPILLING_TANKS, TANK_SUMMARY, FLOOD_ALERTS, SMS_SUMMARY, SCHEDULE_SUMMARY }) {
+export function buildAlerts({ REPORT_COUNTS, LATEST_REPORTS, AT_RISK_TANKS, SPILLING_TANKS, TANK_SUMMARY, FLOOD_ALERTS, SMS_SUMMARY, SCHEDULE_SUMMARY }) {
   const majors = FLOOD_ALERTS.filter((station) => station.status === 'major')
   const minors = FLOOD_ALERTS.filter((station) => station.status === 'warning')
   const alertLevel = FLOOD_ALERTS.filter((station) => station.status === 'watch')
-  const tankTime = TANK_SUMMARY.latestReading ? `Readings of ${TANK_SUMMARY.latestReading}` : 'No reading yet'
+  const tankTime = TANK_SUMMARY.latestReading ? `Readings of ${formatDate(TANK_SUMMARY.latestReading, { year: undefined })}` : 'No reading yet'
 
   const alerts = [
     ...majors.map((station) => ({
@@ -23,6 +23,15 @@ export function buildAlerts({ AT_RISK_TANKS, SPILLING_TANKS, TANK_SUMMARY, FLOOD
       path: `/rivers?station=${station.id}`,
       category: 'River',
     })),
+    REPORT_COUNTS?.new > 0 && {
+      id: `reports-new-${LATEST_REPORTS[0]?.id}`,
+      severity: 'warning',
+      title: `${REPORT_COUNTS.new} new canal report${REPORT_COUNTS.new > 1 ? 's' : ''} from farmers`,
+      detail: LATEST_REPORTS[0] ? `Latest: ${LATEST_REPORTS[0].canal_name}` : 'Waiting to be checked.',
+      time: formatDateTime(LATEST_REPORTS[0]?.created_at),
+      path: '/reports?status=new',
+      category: 'Report',
+    },
     AT_RISK_TANKS.length > 0 && {
       id: 'tanks-critical',
       severity: 'critical',

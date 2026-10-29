@@ -8,9 +8,10 @@ const helmet =require('helmet')  //Security
 const cookieparser = require('cookie-parser')
 const authrouter = require('./routes/authroutes.js')
 const adminrouter =require('./routes/ADMIN/index.js')
-const { reportrouter } = require('./routes/reportroutes.js')
+const reportrouter = require('./routes/reportroutes.js')
+const reminderrouter = require('./routes/reminderroutes.js')
 
-// Admin and farmer tokens must never be interchangeable
+// security: refuse to start unless farmer + admin jwt secrets are set and different, so tokens can't be swapped
 if (!process.env.JWT_SECRET || !process.env.JWT_ADMIN_SECRET || process.env.JWT_SECRET === process.env.JWT_ADMIN_SECRET) {
     throw new Error('JWT_SECRET and JWT_ADMIN_SECRET must both be set and must be different')
 }
@@ -64,6 +65,7 @@ app.use(express.urlencoded( {extended: true, limit: '10mb'}))
 const CREDENTIAL_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174')
     .split(',').map(origin => origin.trim()).filter(Boolean)
 
+// security: only the listed origins get credentials (cookies), anyone else is plain public cors
 app.use(cors((req, callback) => {
     const trusted = CREDENTIAL_ORIGINS.includes(req.header('Origin'))
     callback(null, {
@@ -74,14 +76,14 @@ app.use(cors((req, callback) => {
     })
 }))
 
-// The admin portal loads several data sets per page, so it is mounted before the public
-// slow-down and gets its own limit. Admin sign-in has its own lockout (routes/ADMIN/authroutes.js).
+// admin portal loads a lot per page so it gets its own (higher) limit before the public slowdown.
+// login lockout is separate, in ADMIN/authroutes.js
 const adminLimiter = rateLimit({
     windowMs: 5*60*1000,
     max: 600,
     message: {error: 'Too many requests, please try again later.'}
 })
-app.use('/admin', adminLimiter, adminrouter)   // admin portal only, see routes/ADMIN/index.js
+app.use('/admin', adminLimiter, adminrouter)   // admin portal
 
 app.use(slowDown)
 app.use(limiter)
@@ -92,7 +94,7 @@ app.use(limiter)
 app.get('/', (req, res) => {
     res.status(200).json({
         status: 'success',
-        message: 'Yala-Maha API Server',
+        message: 'Yala Maha API Server',
         endpoints: {
             mahaweli: '/api/data/mahaweli',
             mahaweliJson: '/api/data/mahaweli?format=csv', 
@@ -103,7 +105,9 @@ app.get('/', (req, res) => {
             resorvoirById: '/api/data/reservoir',
             resorvoirHistoryByDays: '/api/data/reservoir/:id/history?days=30',
             rivers: '/api/data/rivers',
-            canals: '/api/data/canals'
+            canals: '/api/data/canals',
+            canalReports: '/api/reports (farmer sign-in)',
+            waterReminders: '/api/reminders (farmer sign-in)'
         }
     })
 })
@@ -117,7 +121,8 @@ app.get('/mahaweli-data', (req, res) => {
 
 app.use('/api/data', apiroute) // for resevoirs and tanks
 app.use('/api/auth', authrouter)   //for l0gin auth
-app.use('/api/reports', reportrouter)   // canal problem reports from farmers
+app.use('/api/reports', reportrouter)   // canal reports
+app.use('/api/reminders', reminderrouter)   // water issue sms reminders
 
 // Error handling middleware
 app.use(errorHandle)

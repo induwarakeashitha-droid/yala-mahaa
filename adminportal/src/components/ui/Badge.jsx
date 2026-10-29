@@ -1,8 +1,8 @@
 import { cn } from '../../utils/format'
 
-export function Badge({ children, tone = 'neutral', variant = 'soft', dot = false, icon: Icon, className }) {
+export function Badge({ children, tone = 'neutral', variant = 'soft', dot = false, icon: Icon, className, ...props }) {
   return (
-    <span className={cn('badge', `badge-${tone}`, `badge-${variant}`, className)}>
+    <span className={cn('badge', `badge-${tone}`, `badge-${variant}`, className)} {...props}>
       {dot && <span className="badge-dot" />}
       {Icon && <Icon size={12} />}
       {children}

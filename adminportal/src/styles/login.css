@@ -54,8 +54,8 @@
   width: 38px;
   height: 38px;
   border-radius: 11px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+  background: #f7f8f1;
 }
 
 .login-intro-copy {

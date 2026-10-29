@@ -42,8 +42,8 @@ export default function CoverageCheck({ t }: { t: Dict }) {
                   <span className="font-semibold text-default-900">{entry.name}</span>
                   <span className="text-default-500">
                     {" "}
-                    · {words[entry.type]}
-                    {entry.detail ? ` · ${entry.detail}` : ""}
+                    - {words[entry.type]}
+                    {entry.detail ? ` - ${entry.detail}` : ""}
                   </span>
                 </span>
               </li>

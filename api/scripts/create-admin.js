@@ -1,35 +1,33 @@
-// Creates an admin portal account from the command line (use it for the first super_admin;
-// after that a super_admin can add accounts with POST /admin/auth/admins).
-//
+// make an admin portal account from the terminal (for the first super_admin, after that use POST /admin/auth/admins)
 //   node scripts/create-admin.js <username> "<full name>" [officer|admin|super_admin]
-//
-// The password is asked for without echoing it, or read from ADMIN_PASSWORD if set.
+// password is asked for (hidden) or taken from ADMIN_PASSWORD
 const path = require('path')
 require('dotenv').config({ path: path.join(__dirname, '..', 'config.env'), quiet: true })
 const db = require('../config/db.js')
 const { ADMIN_ROLES, validatePassword, createAdmin } = require('../services/adminService.js')
 
-function askHidden(question) {
+// security: reads the password without echoing it to the terminal
+function askHidden(q) {
   return new Promise((resolve) => {
-    process.stdout.write(question)
+    process.stdout.write(q)
     const stdin = process.stdin
     stdin.setRawMode?.(true)
     stdin.resume()
     stdin.setEncoding('utf8')
-    let value = ''
-    const onData = (char) => {
-      if (char === '\r' || char === '\n' || char === '\u0004') {
+    let val = ''
+    const onData = (ch) => {
+      if (ch === '\r' || ch === '\n' || ch === '\u0004') {
         stdin.setRawMode?.(false)
         stdin.pause()
         stdin.off('data', onData)
         process.stdout.write('\n')
-        resolve(value)
-      } else if (char === '\u0003') {
+        resolve(val)
+      } else if (ch === '\u0003') {
         process.exit(1)
-      } else if (char === '\u007f') {
-        value = value.slice(0, -1)
+      } else if (ch === '\u007f') {
+        val = val.slice(0, -1)
       } else {
-        value += char
+        val += ch
       }
     }
     stdin.on('data', onData)
@@ -51,22 +49,23 @@ async function main() {
     process.exit(1)
   }
 
-  const password = process.env.ADMIN_PASSWORD || await askHidden('Password: ')
-  const problem = validatePassword(password)
+  const pw = process.env.ADMIN_PASSWORD || await askHidden('Password: ')
+  // security: same password rules as the api
+  const problem = validatePassword(pw)
   if (problem) {
     console.error(problem)
     process.exit(1)
   }
-  if (!process.env.ADMIN_PASSWORD && password !== await askHidden('Repeat password: ')) {
+  if (!process.env.ADMIN_PASSWORD && pw !== await askHidden('Repeat password: ')) {
     console.error('Passwords do not match.')
     process.exit(1)
   }
 
   try {
-    const admin = await createAdmin({ username, password, full_name: fullName, role })
+    const admin = await createAdmin({ username, password: pw, full_name: fullName, role })
     console.log(`Created ${admin.role} '${admin.username}' (${admin.admin_id}).`)
-  } catch (error) {
-    console.error(error.code === '23505' ? `An admin called '${username}' already exists.` : error.message)
+  } catch (err) {
+    console.error(err.code === '23505' ? `An admin called '${username}' already exists.` : err.message)
     process.exitCode = 1
   } finally {
     await db.pool.end()

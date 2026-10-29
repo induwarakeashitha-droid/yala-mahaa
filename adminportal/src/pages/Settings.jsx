@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Check, Clock3, KeyRound, Moon, ShieldCheck, Sun, UserPlus, UserRound } from 'lucide-react'
+import { Navigate, NavLink, useParams } from 'react-router-dom'
+import { Check, Clock3, KeyRound, Moon, Palette, ShieldCheck, Sun, UserPlus, UserRound, Users } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { useToast } from '../context/ToastContext'
 import { ROLE_LABELS, useAuth } from '../context/AuthContext'
 import { api } from '../api/client'
-import { formatDateTime } from '../utils/format'
+import { cn, formatDateTime } from '../utils/format'
 import { Avatar } from '../components/ui/Avatar'
 import { Button } from '../components/ui/Button'
 import { Card, CardHeader } from '../components/ui/Card'
@@ -21,6 +22,7 @@ export function Settings() {
   const [savingPassword, setSavingPassword] = useState(false)
   const [newAdmin, setNewAdmin] = useState(EMPTY_ADMIN)
   const [creating, setCreating] = useState(false)
+  const { tab } = useParams()
 
   const changePassword = async (event) => {
     event.preventDefault()
@@ -60,16 +62,40 @@ export function Settings() {
     }
   }
 
+  const tabs = [
+    { id: 'account', label: 'My account', icon: UserRound },
+    { id: 'preferences', label: 'Preferences', icon: Palette },
+    // only super admins can add admins
+    ...(isSuperAdmin ? [{ id: 'admins', label: 'Admin accounts', icon: Users }] : []),
+  ]
+  if (!tabs.some((t) => t.id === tab)) return <Navigate to="/settings/account" replace />
+
   return (
     <div className="page settings-page">
       <PageHeader
-        eyebrow="Workspace preferences"
-        title="Settings"
-        description="Your account, password and how the portal looks."
+        eyebrow="Settings"
+        title={tabs.find((t) => t.id === tab).label}
+        description={
+          tab === 'account'
+            ? 'Your account details and password.'
+            : tab === 'preferences'
+              ? 'How the portal looks on this device.'
+              : 'Add people who can sign in to this portal.'
+        }
       />
 
-      <div className="settings-grid">
-        <div className="settings-stack">
+      <nav className="page-tabs" aria-label="Settings sections">
+        {tabs.map(({ id, label, icon: Icon }) => (
+          <NavLink key={id} to={`/settings/${id}`} className={({ isActive }) => cn('page-tab', isActive && 'active')}>
+            <Icon size={14} />
+            {label}
+          </NavLink>
+        ))}
+      </nav>
+
+      {tab === 'account' && (
+        <div className="settings-grid">
+          <div className="settings-stack">
           <Card>
             <CardHeader
               icon={UserRound}
@@ -101,7 +127,65 @@ export function Settings() {
               </div>
             </div>
           </Card>
+          </div>
+          <div className="settings-stack">
+          <Card>
+            <CardHeader icon={KeyRound} title="Password" subtitle="10 to 72 characters" />
+            <form className="form-grid" style={{ padding: '4px 18px 18px' }} onSubmit={changePassword}>
+              <label className="field span-2">
+                <span>Current password</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={password.current}
+                  onChange={(event) => setPassword((current) => ({ ...current, current: event.target.value }))}
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>New password</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={10}
+                  maxLength={72}
+                  value={password.next}
+                  onChange={(event) => setPassword((current) => ({ ...current, next: event.target.value }))}
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>Repeat new password</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={password.repeat}
+                  onChange={(event) => setPassword((current) => ({ ...current, repeat: event.target.value }))}
+                  required
+                />
+              </label>
+              <div className="span-2" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Button variant="primary" icon={Check} type="submit" loading={savingPassword}>
+                  Change password
+                </Button>
+              </div>
+            </form>
+          </Card>
+          <div className="settings-security-note">
+            <span className="settings-security-icon">
+              <ShieldCheck size={17} />
+            </span>
+            <div>
+              <strong>Changing your password signs out your other sessions</strong>
+              <span>Sessions also end after 7 days without use. Farmer accounts can never open this portal.</span>
+            </div>
+          </div>
+          </div>
+        </div>
+      )}
 
+      {tab === 'preferences' && (
+        <div className="settings-single">
           <Card>
             <CardHeader
               icon={theme === 'dark' ? Moon : Sun}
@@ -152,123 +236,70 @@ export function Settings() {
             </div>
           </Card>
         </div>
+      )}
 
-        <div className="settings-stack">
+      {tab === 'admins' && (
+        <div className="settings-single">
           <Card>
-            <CardHeader icon={KeyRound} title="Password" subtitle="10 to 72 characters" />
-            <form className="form-grid" style={{ padding: '4px 18px 18px' }} onSubmit={changePassword}>
-              <label className="field span-2">
-                <span>Current password</span>
+            <CardHeader
+              icon={UserPlus}
+              title="Create an admin account"
+              subtitle="Officers can only view. Administrators can also change data."
+            />
+            <form className="form-grid" style={{ padding: '4px 18px 18px' }} onSubmit={createAdmin}>
+              <label className="field">
+                <span>Full name</span>
                 <input
-                  type="password"
-                  autoComplete="current-password"
-                  value={password.current}
-                  onChange={(event) => setPassword((current) => ({ ...current, current: event.target.value }))}
+                  value={newAdmin.full_name}
+                  onChange={(event) => setNewAdmin((current) => ({ ...current, full_name: event.target.value }))}
                   required
                 />
               </label>
               <label className="field">
-                <span>New password</span>
+                <span>Username</span>
+                <input
+                  autoComplete="off"
+                  pattern="[A-Za-z0-9_.\-]{3,40}"
+                  title="3 to 40 letters, numbers, dots, dashes or underscores"
+                  value={newAdmin.username}
+                  onChange={(event) => setNewAdmin((current) => ({ ...current, username: event.target.value }))}
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>Temporary password</span>
                 <input
                   type="password"
                   autoComplete="new-password"
                   minLength={10}
                   maxLength={72}
-                  value={password.next}
-                  onChange={(event) => setPassword((current) => ({ ...current, next: event.target.value }))}
+                  value={newAdmin.password}
+                  onChange={(event) => setNewAdmin((current) => ({ ...current, password: event.target.value }))}
                   required
                 />
               </label>
               <label className="field">
-                <span>Repeat new password</span>
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  value={password.repeat}
-                  onChange={(event) => setPassword((current) => ({ ...current, repeat: event.target.value }))}
-                  required
-                />
+                <span>Role</span>
+                <select
+                  value={newAdmin.role}
+                  onChange={(event) => setNewAdmin((current) => ({ ...current, role: event.target.value }))}
+                >
+                  {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <div className="span-2" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Button variant="primary" icon={Check} type="submit" loading={savingPassword}>
-                  Change password
+                <Button variant="primary" icon={UserPlus} type="submit" loading={creating}>
+                  Create account
                 </Button>
               </div>
             </form>
           </Card>
-
-          {isSuperAdmin && (
-            <Card>
-              <CardHeader
-                icon={UserPlus}
-                title="Create an admin account"
-                subtitle="Officers can only view. Administrators can also change data."
-              />
-              <form className="form-grid" style={{ padding: '4px 18px 18px' }} onSubmit={createAdmin}>
-                <label className="field">
-                  <span>Full name</span>
-                  <input
-                    value={newAdmin.full_name}
-                    onChange={(event) => setNewAdmin((current) => ({ ...current, full_name: event.target.value }))}
-                    required
-                  />
-                </label>
-                <label className="field">
-                  <span>Username</span>
-                  <input
-                    autoComplete="off"
-                    pattern="[A-Za-z0-9_.\-]{3,40}"
-                    title="3 to 40 letters, numbers, dots, dashes or underscores"
-                    value={newAdmin.username}
-                    onChange={(event) => setNewAdmin((current) => ({ ...current, username: event.target.value }))}
-                    required
-                  />
-                </label>
-                <label className="field">
-                  <span>Temporary password</span>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={10}
-                    maxLength={72}
-                    value={newAdmin.password}
-                    onChange={(event) => setNewAdmin((current) => ({ ...current, password: event.target.value }))}
-                    required
-                  />
-                </label>
-                <label className="field">
-                  <span>Role</span>
-                  <select
-                    value={newAdmin.role}
-                    onChange={(event) => setNewAdmin((current) => ({ ...current, role: event.target.value }))}
-                  >
-                    {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="span-2" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button variant="primary" icon={UserPlus} type="submit" loading={creating}>
-                    Create account
-                  </Button>
-                </div>
-              </form>
-            </Card>
-          )}
-
-          <div className="settings-security-note">
-            <span className="settings-security-icon">
-              <ShieldCheck size={17} />
-            </span>
-            <div>
-              <strong>Changing your password signs out your other sessions</strong>
-              <span>Sessions also end after 7 days without use. Farmer accounts can never open this portal.</span>
-            </div>
-          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

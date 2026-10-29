@@ -79,7 +79,7 @@ export default function CreditsPage() {
                   {photo.title}
                 </a>
                 <br />
-                by {photo.author} ·{" "}
+                by {photo.author} -{" "}
                 <a href={photo.licenceUrl} className="hover:underline" rel="noopener noreferrer">
                   {photo.licence}
                 </a>

@@ -4,7 +4,7 @@ import { restoreSession, setSignedOutHandler, signIn as apiSignIn, signOut as ap
 const AuthContext = createContext(null)
 
 export const ROLE_LABELS = {
-  officer: 'Officer · view only',
+  officer: 'Officer - view only',
   admin: 'Administrator',
   super_admin: 'Super administrator',
 }

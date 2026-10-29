@@ -16,8 +16,8 @@ const OTP_TTL_SECONDS = 3 * 60
 const VERIFIED_PHONE_TTL_SECONDS = 15 * 60
 const REFRESH_TOKEN_MS = 7 * 24 * 60 * 60 * 1000  //7days
 
-// Secure cookies need https, so they are only required in production.
-// Set COOKIE_SAMESITE=none (with https) if the portal and API are on different sites.
+// security: httpOnly refresh cookie, secure in prod (needs https), samesite strict.
+// COOKIE_SAMESITE=none if portal + api end up on different sites
 const refreshCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SAMESITE === 'none',
@@ -37,10 +37,11 @@ authrouter.post('/send-otp', async (req, res, next) => {
       return res.status(400).json({ status: 'fail', message: phoneCheck.error })
     }
 
+    // otp from a crypto random source, kept in redis for 3 min only
     const otp = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0')
     await sendSms(
       phoneCheck.normalized,
-      `Yala-Maha verification code: ${otp}.expires in 3 minutes.`
+      `Yala Maha verification code: ${otp}.expires in 3 minutes.`
     )
     await redisClient.set(`otp:${phoneCheck.normalized}`, otp, 'EX', OTP_TTL_SECONDS)
 
@@ -77,6 +78,7 @@ authrouter.post('/verify-otp', async (req, res, next) => {
       return res.status(400).json({ status: 'fail', message: 'OTP is invalid or has expired.' })
     }
 
+   //constant time compare so timing doesn't leak the otp
     const isValid = submittedOtp.length === storedOtp.length &&
       crypto.timingSafeEqual(Buffer.from(submittedOtp), Buffer.from(storedOtp))
     if (!isValid) {
@@ -87,7 +89,7 @@ authrouter.post('/verify-otp', async (req, res, next) => {
     await redisClient.del(key)
 
     if (existingFarmer) {
-      // /login checks this key, so the account can only be opened by whoever has the phone
+      // security: /login needs this key, so only whoever has the phone can sign in
       await redisClient.set(
         `verified-login:${phoneCheck.normalized}`,
         '1',
@@ -152,7 +154,7 @@ authrouter.post('/register', async (req, res, next) => {
 
     if (!/^([0-9]{9}[VvXx]|[0-9]{12})$/.test(nic.trim())) {
       return res.status(400).json({ status: 'fail', message: 'NIC format is invalid.' })
-    }
+    }   //to check nic format
 
     if (reservoir_id != null && tank_id != null) {
       return res.status(400).json({
@@ -161,12 +163,13 @@ authrouter.post('/register', async (req, res, next) => {
       })
     }
 
-    // Farm details: water source, location label and the crop list (optional here)
+    // farm details (optional here)
     const farmCheck = validateFarm(req.body)
     if (farmCheck.error) {
       return res.status(400).json({ status: 'fail', message: farmCheck.error })
     }
 
+// can only register a number that just passed the otp
     const verified = await redisClient.get(`verified-phone:${phoneCheck.normalized}`)
     if (!verified) {
       return res.status(403).json({ status: 'fail', message: 'Verify this phone number before registering.' })
@@ -242,7 +245,7 @@ authrouter.route('/profile')
   .patch(requireFarmer, async (req, res, next) => {
     try {
       if (!UPDATABLE_FIELDS.some(field => req.body?.[field] !== undefined)) {
-        return res.status(400).json({ status: 'fail', message: 'Nothing to update.' })
+        return res.status(400).json({ status: 'fail', message: 'Nothing to update.' })    
       }
       const { error, changes } = validateFarmerChanges(req.body)
       if (error) {
@@ -255,7 +258,7 @@ authrouter.route('/profile')
       }
       return res.status(200).json({ status: 'success', message: 'Profile updated.', data: farmer })
     } catch (error) {
-      // 23514 = CHECK constraint (e.g. both water sources set), 23503 = unknown reservoir/tank id
+      // 23514 = check constraint (both water sources), 23503 = unknown reservoir/tank id
       if (error.code === '23514' || error.code === '23503') {
         return res.status(400).json({ status: 'fail', message: 'Invalid farm location or water source.' })
       }
@@ -264,7 +267,7 @@ authrouter.route('/profile')
   })
 
 
-// The signed-in farmer's farm details. PUT replaces them, including the whole crop list.
+// my farm. PUT replaces it incl. the whole crop list
 authrouter.route('/farm')
   .get(requireFarmer, async (req, res, next) => {
     try {
@@ -399,7 +402,7 @@ authrouter.route('/login').post( async (req,res,next)=>{
       return res.status(400).json({ status: 'fail', message: phoneCheck.error })
     }
 
-    // Set by /verify-otp for a registered number: the OTP is required to sign in
+    // security: login needs a fresh otp for this phone (set by /verify-otp), NIC alone isn't enough
     const loginKey = `verified-login:${phoneCheck.normalized}`
     if (!await redisClient.get(loginKey)) {
       return res.status(403).json({ status: 'fail', message: 'Verify this phone number with the SMS code before signing in.' })

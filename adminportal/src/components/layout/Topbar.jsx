@@ -5,6 +5,7 @@ import {
   Bell,
   CheckCheck,
   ChevronDown,
+  ClipboardList,
   ChevronRight,
   Droplets,
   LogOut,
@@ -30,6 +31,7 @@ const ALERT_ICONS = {
   Reservoir: Droplets,
   River: Waves,
   SMS: MessageSquareText,
+  Report: ClipboardList,
   Season: CalendarDays,
 }
 
@@ -101,7 +103,7 @@ export function Topbar({ onOpenSearch, onOpenMobile }) {
         </IconButton>
         <NavLink to="/" className="topbar-brand" aria-label="Yala Maha home">
           <span className="brand-mark">
-            <Droplets size={18} strokeWidth={2.2} />
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" draggable="false" />
           </span>
           <span className="brand-copy">
             <strong>Yala Maha</strong>
@@ -236,7 +238,7 @@ export function Topbar({ onOpenSearch, onOpenMobile }) {
                   type="button"
                   onClick={() => {
                     setProfileOpen(false)
-                    navigate('/settings')
+                    navigate('/settings/account')
                   }}
                 >
                   <UserRound size={16} />
@@ -246,7 +248,7 @@ export function Topbar({ onOpenSearch, onOpenMobile }) {
                   type="button"
                   onClick={() => {
                     setProfileOpen(false)
-                    navigate('/settings')
+                    navigate('/settings/preferences')
                   }}
                 >
                   <Settings size={16} />

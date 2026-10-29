@@ -6,7 +6,7 @@ const isLive = args.includes('--live')
 const nonFlagArgs = args.filter(a => a !== '--live')
 
 const recipient = nonFlagArgs[0]
-const customMessage = nonFlagArgs[1] || 'YalaMaha ALERT: Test SMS from Gateway'
+const customMessage = nonFlagArgs[1] || 'Yala Maha ALERT: Test SMS from Gateway'
 
 if (!recipient) {
   console.log(`

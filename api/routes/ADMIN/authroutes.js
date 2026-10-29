@@ -19,6 +19,7 @@ const LOGIN_LOCK_SECONDS = 15 * 60
 
 
 const REFRESH_COOKIE = 'adminRefreshToken'
+// security: refresh cookie is httpOnly (js can't read it), secure in prod, samesite strict, only sent to /admin/auth
 const refreshCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SAMESITE === 'none',
@@ -26,11 +27,12 @@ const refreshCookieOptions = {
   path: '/admin/auth'
 }
 
-const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex')
+// security: only a sha256 of the refresh token goes in the db, so a db leak doesn't give working tokens
+const hashToken = (tok) => crypto.createHash('sha256').update(tok).digest('hex')
 
-function signAccessToken(admin, sessionId) {
+function signAccessToken(admin, sessId) {
   return jwt.sign(
-    { sub: admin.admin_id, role: ADMIN_TOKEN_ROLE, access: admin.role, sessionId },
+    { sub: admin.admin_id, role: ADMIN_TOKEN_ROLE, access: admin.role, sessionId: sessId },
     JWT_ADMIN_SECRET,
     { expiresIn: ACCESS_TOKEN_TTL, audience: ADMIN_TOKEN_AUDIENCE }
   )
@@ -50,100 +52,102 @@ adminauthrouter.post('/login', async (req,res,next)=>{
     if (typeof username !== 'string' || !username.trim() || typeof password !== 'string' || !password) {
       return res.status(400).json({ status: 'fail', message: 'Username and password are required.' })
     }
-    const name = username.trim()
+    const uname = username.trim()
 
-    // Too many wrong passwords for this username: wait before trying again
-    const failKey = loginFailKey(name)
+    // security: brute force lock - 5 wrong passwords locks that username for 15 min (counted in redis)
+    const failKey = loginFailKey(uname)
     const fails = Number(await redisClient.get(failKey)) || 0
     if (fails >= LOGIN_FAIL_LIMIT) {
       const wait = Math.ceil((await redisClient.ttl(failKey)) / 60)
       return res.status(429).json({ status: 'fail', message: `Too many failed sign-ins. Try again in ${wait} minutes.` })
       }
 
-    const admin = await verifyAdminLogin(name, password)
+    const admin = await verifyAdminLogin(uname, password)
     if (!admin) {
       await redisClient.multi().incr(failKey).expire(failKey, LOGIN_LOCK_SECONDS).exec()
       return res.status(401).json({ status: 'fail', message: 'Wrong username or password.' })
     }
     await redisClient.del(failKey)
 
-    const refreshToken = signRefreshToken(admin.admin_id)
-    const session = await db.query(
+    const refreshTok = signRefreshToken(admin.admin_id)
+    const sess = await db.query(
       `INSERT INTO admin_sessions (admin_id, refresh_token_hash, ip, user_agent, expires_at)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [admin.admin_id, hashToken(refreshToken), req.ip, req.headers['user-agent'] || 'unknown', new Date(Date.now() + REFRESH_TOKEN_MS)]
+      [admin.admin_id, hashToken(refreshTok), req.ip, req.headers['user-agent'] || 'unknown', new Date(Date.now() + REFRESH_TOKEN_MS)]
     )
     await db.query('UPDATE admins SET last_login_at = NOW() WHERE admin_id = $1', [admin.admin_id])
 
-    res.cookie(REFRESH_COOKIE, refreshToken, { ...refreshCookieOptions, maxAge: REFRESH_TOKEN_MS })
+    res.cookie(REFRESH_COOKIE, refreshTok, { ...refreshCookieOptions, maxAge: REFRESH_TOKEN_MS })
     return res.status(200).json({
       status: 'success',
       message: 'Signed in.',
       admin,
-      accessToken: signAccessToken(admin, session.rows[0].id)
+      accessToken: signAccessToken(admin, sess.rows[0].id)
     })
-  }catch(error){
-    return next(error)
+  }catch(err){
+    return next(err)
   }
 })
 
-// New access token from the refresh cookie. The refresh token is rotated each time.
+// new access token from the refresh cookie
 adminauthrouter.post('/refresh_token', async (req, res, next) => {
   try {
-    const refreshToken = req.cookies[REFRESH_COOKIE]
-    if(!refreshToken){
+    const refreshTok = req.cookies[REFRESH_COOKIE]
+    if(!refreshTok){
       return res.status(401).json({ status: 'fail', message: 'refreshToken not found' })
     }
     try {
-      jwt.verify(refreshToken, JWT_ADMIN_SECRET, { audience: ADMIN_TOKEN_AUDIENCE })
+      jwt.verify(refreshTok, JWT_ADMIN_SECRET, { audience: ADMIN_TOKEN_AUDIENCE })
     } catch {
       res.clearCookie(REFRESH_COOKIE, refreshCookieOptions)
       return res.status(401).json({ status: 'fail', message: 'refreshToken invalid or expired' })
     }
 
-    const session = await db.query(
+    const sess = await db.query(
       `SELECT s.id, a.admin_id, a.role
        FROM admin_sessions s JOIN admins a ON a.admin_id = s.admin_id
        WHERE s.refresh_token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW() AND a.is_active`,
-      [hashToken(refreshToken)]
+      [hashToken(refreshTok)]
     )
-    if (!session.rows[0]) {
+    if (!sess.rows[0]) {
       res.clearCookie(REFRESH_COOKIE, refreshCookieOptions)
       return res.status(401).json({ status: 'fail', message: 'Session ended, sign in again.' })
     }
-    const { id: sessionId, ...admin } = session.rows[0]
+    const { id: sessId, ...admin } = sess.rows[0]
 
-    const newRefreshToken = signRefreshToken(admin.admin_id)
+    // security: refresh token rotation - every refresh swaps in a new one, so an old stolen token stops working
+    const newRefreshTok = signRefreshToken(admin.admin_id)
     await db.query(
       `UPDATE admin_sessions SET refresh_token_hash = $2, expires_at = $3, last_used_at = NOW() WHERE id = $1`,
-      [sessionId, hashToken(newRefreshToken), new Date(Date.now() + REFRESH_TOKEN_MS)]
+      [sessId, hashToken(newRefreshTok), new Date(Date.now() + REFRESH_TOKEN_MS)]
     )
 
-    res.cookie(REFRESH_COOKIE, newRefreshToken, { ...refreshCookieOptions, maxAge: REFRESH_TOKEN_MS })
-    return res.status(200).json({ status: 'success', accessToken: signAccessToken(admin, sessionId) })
-  } catch (error) {
-    return next(error)
+    res.cookie(REFRESH_COOKIE, newRefreshTok, { ...refreshCookieOptions, maxAge: REFRESH_TOKEN_MS })
+    return res.status(200).json({ status: 'success', accessToken: signAccessToken(admin, sessId) })
+  } catch (err) {
+    return next(err)
   }
 })
 
 adminauthrouter.post('/logout', async(req, res, next)=>{
   try {
-    const refreshToken = req.cookies[REFRESH_COOKIE]
-    if (refreshToken) {
-      await db.query('UPDATE admin_sessions SET revoked_at = NOW() WHERE refresh_token_hash = $1 AND revoked_at IS NULL', [hashToken(refreshToken)])
+    const refreshTok = req.cookies[REFRESH_COOKIE]
+    // security: revokes the session server side, not just clearing the cookie
+    if (refreshTok) {
+      await db.query('UPDATE admin_sessions SET revoked_at = NOW() WHERE refresh_token_hash = $1 AND revoked_at IS NULL', [hashToken(refreshTok)])
     }
     res.clearCookie(REFRESH_COOKIE, refreshCookieOptions)
     return res.status(200).json({ status: 'success', message: 'Signed out.' })
-  }catch(error){
-    return next(error)
+  }catch(err){
+    return next(err)
   }
 })
 
 adminauthrouter.get('/me', requireAdmin, async (req,res, next) => {
   try {
     return res.status(200).json({ status: 'success', admin: await findAdminById(req.admin.admin_id) })
-  }catch(error){
-    return next(error)
+  }catch(err){
+    return next(err)
   }
 })
 
@@ -160,22 +164,22 @@ adminauthrouter.patch('/password', requireAdmin, async (req, res, next) => {
     if (!(await changeAdminPassword(req.admin.admin_id, current_password, new_password))) {
       return res.status(401).json({ status: 'fail', message: 'Current password is wrong.' })
     }
-    // Sign out every other session of this admin
+    // security: password change logs out every other session of this admin
     await db.query(
       'UPDATE admin_sessions SET revoked_at = NOW() WHERE admin_id = $1 AND id <> $2 AND revoked_at IS NULL',
       [req.admin.admin_id, req.adminSessionId]
     )
     return res.status(200).json({ status: 'success', message: 'Password changed.' })
-  } catch (error) {
-    return next(error)
+  } catch (err) {
+    return next(err)
   }
 })
 
-// Create another admin account (super_admin only)
+// super_admin only
 adminauthrouter.post('/admins', requireAdmin, superAdminOnly, async (req, res, next) => {
   try {
     const { username, password, full_name, role } = req.body || {}
-    if ([username, full_name].some(value => typeof value !== 'string' || !value.trim())) {
+    if ([username, full_name].some(v => typeof v !== 'string' || !v.trim())) {
       return res.status(400).json({ status: 'fail', message: 'username and full_name are required.' })
     }
     if (!/^[a-zA-Z0-9_.-]{3,40}$/.test(username.trim())) {
@@ -190,11 +194,11 @@ adminauthrouter.post('/admins', requireAdmin, superAdminOnly, async (req, res, n
     }
     const admin = await createAdmin({ username: username.trim(), password, full_name: full_name.trim(), role })
     return res.status(201).json({ status: 'success', message: 'Admin created.', data: admin })
-  } catch (error) {
-    if (error.code === '23505') {
+  } catch (err) {
+    if (err.code === '23505') {
       return res.status(409).json({ status: 'fail', message: 'An admin with that username already exists.' })
     }
-    return next(error)
+    return next(err)
   }
 })
 

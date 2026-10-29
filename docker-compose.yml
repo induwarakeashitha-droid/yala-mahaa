@@ -37,6 +37,7 @@ services:
       FORECAST_API_URL: http://ml:5000
     volumes:
       - apilogs:/app/logs
+      - apiuploads:/app/uploads         # canal report photos
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_started }
@@ -74,5 +75,6 @@ services:
 volumes:
   pgdata:
   apilogs:
+  apiuploads:
   caddy_data:
   caddy_config:

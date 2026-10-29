@@ -1,11 +1,10 @@
-// Read-outs for the admin portal pages (mounted at /admin/data, behind requireAdmin).
-//
-//   GET  /admin/data/reservoirs                  every reservoir, its latest reading and 30 days of history
-//   POST /admin/data/reservoirs/:id/readings     log a field reading (admin, super_admin)
-//   GET  /admin/data/reservoirs/:id/forecast     14-day ML forecast, same as the farmer portal's
-//   GET  /admin/data/rivers                      river gauges: latest reading and the last 24 hours
-//   GET  /admin/data/schedule                    the Mahaweli water issue schedule
-//   GET  /admin/data/farmer-stats                farmer counts by district, month, crop and water source
+// data for the admin portal pages (/admin/data)
+//   GET  /reservoirs                 every reservoir, latest reading + 30 days history
+//   POST /reservoirs/:id/readings    log a field reading
+//   GET  /reservoirs/:id/forecast    14-day ML forecast, same as the farmer portal's
+//   GET  /rivers                     gauges, latest + last 24h
+//   GET  /schedule                   mahaweli water issue schedule
+//   GET  /farmer-stats
 const express = require('express')
 const db = require('../../config/db.js')
 const { canEdit } = require('../../middleware/requireAdmin.js')
@@ -15,12 +14,12 @@ const forecast = require('../../models/forecastModel.js')
 const datarouter = express.Router()
 
 const HISTORY_DAYS = 30
-// Days where fewer reservoirs reported than this are left out of the network average
+// days with fewer reservoirs reporting than this are skipped in the network average
 const MIN_DAILY_READINGS = 20
 
 datarouter.get('/reservoirs', async(req, res, next)=>{
   try {
-    const reservoirs = await db.query(
+    const resvs = await db.query(
       `SELECT r.id, r.name, r.district, r.division, r.latitude, r.longitude, r.type,
               r.farmland_acres, r.full_depth_ft, r.gross_capacity_acft, r.dead_storage_acft, r.active_capacity_acft,
               to_char(l.reading_date, 'YYYY-MM-DD') AS reading_date, l.water_depth_ft, l.gross_storage_acft,
@@ -32,7 +31,7 @@ datarouter.get('/reservoirs', async(req, res, next)=>{
        ) l ON true
        ORDER BY r.name`
     )
-    const history = await db.query(
+    const hist = await db.query(
       `SELECT reservoir_id, to_char(reading_date, 'YYYY-MM-DD') AS date,
               usable_storage_percent AS percent, water_depth_ft AS depth, rainfall_prev_day_mm AS rainfall
        FROM reservoir_levels
@@ -40,8 +39,8 @@ datarouter.get('/reservoirs', async(req, res, next)=>{
        ORDER BY reading_date`,
       [HISTORY_DAYS]
     )
-    // Not every reservoir reports every day, so each day uses each reservoir's latest reading from
-    // the week before it. Rainfall is the highest reported that day.
+    // not every reservoir reports daily, so each day takes each reservoir's latest reading from the week before.
+    // rainfall = highest reported that day
     const daily = await db.query(
       `SELECT to_char(d, 'YYYY-MM-DD') AS date, count(*)::int AS reservoirs,
               round(avg(l.usable_storage_percent), 1) AS storage,
@@ -60,39 +59,40 @@ datarouter.get('/reservoirs', async(req, res, next)=>{
       [HISTORY_DAYS, MIN_DAILY_READINGS]
     )
 
-    const byReservoir = {}
-    for (const row of history.rows) {
-      (byReservoir[row.reservoir_id] ||= []).push({ date: row.date, percent: row.percent, depth: row.depth, rainfall: row.rainfall })
+    const byResv = {}
+    for (const row of hist.rows) {
+      (byResv[row.reservoir_id] ||= []).push({ date: row.date, percent: row.percent, depth: row.depth, rainfall: row.rainfall })
     }
     return res.status(200).json({
       status: 'success',
-      data: reservoirs.rows.map(row => ({ ...row, history: byReservoir[row.id] || [] })),
+      data: resvs.rows.map(row => ({ ...row, history: byResv[row.id] || [] })),
       daily: daily.rows
     })
-  } catch (error) {
-    return next(error)
+  } catch (err) {
+    return next(err)
   }
 })
 
-const toNumber = (value) => (value === '' || value === null || value === undefined ? null : Number(value))
+const toNum = (val) => (val === '' || val === null || val === undefined ? null : Number(val))
 
-// Body: { usable_storage_percent, water_depth_ft, rainfall_prev_day_mm?, reading_date? (YYYY-MM-DD, default today) }
-// A reading for a day that already has one replaces it.
 datarouter.get('/reservoirs/:id/forecast', forecast.getForecastByReservoirId)
 
+// body: usable_storage_percent, water_depth_ft, rainfall_prev_day_mm?, reading_date? (default today)
+// same day again = replaces it
 datarouter.post('/reservoirs/:id/readings', canEdit, async (req, res, next) => {
   try {
     const body = req.body || {}
-    const percent = toNumber(body.usable_storage_percent)
-    const depth = toNumber(body.water_depth_ft)
-    const rainfall = toNumber(body.rainfall_prev_day_mm)
-    if (percent === null || !Number.isFinite(percent) || percent < 0 || percent > 150) {
+    const pct = toNum(body.usable_storage_percent)
+    const depth = toNum(body.water_depth_ft)
+    const rain = toNum(body.rainfall_prev_day_mm)
+    // security: range checks on every number + date format so junk can't get into the readings
+    if (pct === null || !Number.isFinite(pct) || pct < 0 || pct > 150) {
       return res.status(400).json({ status: 'fail', message: 'Usable storage must be a percentage between 0 and 150.' })
     }
     if (depth === null || !Number.isFinite(depth) || depth < 0) {
       return res.status(400).json({ status: 'fail', message: 'Water depth must be 0 ft or more.' })
     }
-    if (rainfall !== null && (!Number.isFinite(rainfall) || rainfall < 0)) {
+    if (rain !== null && (!Number.isFinite(rain) || rain < 0)) {
       return res.status(400).json({ status: 'fail', message: 'Rainfall must be 0 mm or more.' })
       }
     const date = body.reading_date || new Date().toISOString().slice(0, 10)
@@ -100,15 +100,15 @@ datarouter.post('/reservoirs/:id/readings', canEdit, async (req, res, next) => {
       return res.status(400).json({ status: 'fail', message: 'Reading date must be a past date (YYYY-MM-DD).' })
     }
 
-    const reservoir = await db.query('SELECT id, active_capacity_acft, dead_storage_acft FROM reservoirs WHERE id = $1', [req.params.id])
-    if (!reservoir.rows[0]) {
+    const resv = await db.query('SELECT id, active_capacity_acft, dead_storage_acft FROM reservoirs WHERE id = $1', [req.params.id])
+    if (!resv.rows[0]) {
       return res.status(404).json({ status: 'fail', message: 'Reservoir not found.' })
     }
-    const { active_capacity_acft: active, dead_storage_acft: dead } = reservoir.rows[0]
-    const usable = active != null ? Math.round((percent / 100) * Number(active)) : null
+    const { active_capacity_acft: active, dead_storage_acft: dead } = resv.rows[0]
+    const usable = active != null ? Math.round((pct / 100) * Number(active)) : null
     const gross = usable != null ? usable + Number(dead || 0) : null
 
-    const result = await db.query(
+    const r = await db.query(
       `INSERT INTO reservoir_levels (reservoir_id, reading_date, water_depth_ft, gross_storage_acft, usable_storage_acft,
                                      usable_storage_percent, rainfall_prev_day_mm, is_spilling)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -118,11 +118,11 @@ datarouter.post('/reservoirs/:id/readings', canEdit, async (req, res, next) => {
          rainfall_prev_day_mm = EXCLUDED.rainfall_prev_day_mm, is_spilling = EXCLUDED.is_spilling, fetched_at = now()
        RETURNING reservoir_id, to_char(reading_date, 'YYYY-MM-DD') AS reading_date, water_depth_ft, gross_storage_acft,
                  usable_storage_acft, usable_storage_percent, rainfall_prev_day_mm, is_spilling`,
-      [req.params.id, date, depth, gross, usable, percent, rainfall, percent >= 100 ? 'Yes' : 'No']
+      [req.params.id, date, depth, gross, usable, pct, rain, pct >= 100 ? 'Yes' : 'No']
     )
-    return res.status(201).json({ status: 'success', message: 'Reading saved.', data: result.rows[0] })
-  } catch(error){
-    return sendDbError(res, next, error)
+    return res.status(201).json({ status: 'success', message: 'Reading saved.', data: r.rows[0] })
+  } catch(err){
+    return sendDbError(res, next, err)
   }
 })
 
@@ -136,24 +136,25 @@ datarouter.get('/rivers', async (req, res, next) => {
        WHERE basin IS NOT NULL AND station IS NOT NULL
        ORDER BY basin, station, creation_date DESC`
     )
-    // The 24 hours before the newest reading, so the charts still have data when the loader is behind
-    const history = await db.query(
+    // 24h before the newest reading (not now) so charts still work if the loader is behind
+    const hist = await db.query(
       `SELECT basin, station, water_level, rain_fall, creation_date
        FROM river_level_realtime
        WHERE station IS NOT NULL
          AND creation_date >= (SELECT max(creation_date) FROM river_level_realtime) - interval '24 hours'
        ORDER BY creation_date`
     )
-    const rainfall = await db.query(
-      `SELECT station, basin, rain_fall, creation_date
+    // each rain report = rain since that station's last report, so 24h total is the sum
+    const rain = await db.query(
+      `SELECT station, basin, round(sum(rain_fall)::numeric, 1) AS rain_total, max(creation_date) AS creation_date
        FROM rainfall_realtime
-       WHERE rain_fall IS NOT NULL
-         AND creation_date >= (SELECT max(creation_date) FROM rainfall_realtime) - interval '24 hours'
-       ORDER BY rain_fall DESC, creation_date DESC LIMIT 1`
+       WHERE rain_fall IS NOT NULL AND creation_date >= now() - interval '24 hours'
+       GROUP BY station, basin
+       ORDER BY rain_total DESC LIMIT 1`
     )
 
     const series = {}
-    for (const row of history.rows) {
+    for (const row of hist.rows) {
       (series[`${row.basin}|${row.station}`] ||= []).push({ level: row.water_level, rainfall: row.rain_fall, at: row.creation_date })
     }
     return res.status(200).json({
@@ -171,16 +172,16 @@ datarouter.get('/rivers', async (req, res, next) => {
         reading_at: row.creation_date,
         history: series[`${row.basin}|${row.station}`] || []
       })),
-      topRainfall: rainfall.rows[0] || null
+      topRainfall: rain.rows[0] || null
     })
-  }catch(error){
-    return next(error)
+  }catch(err){
+    return next(err)
   }
 })
 
 datarouter.get('/schedule', async (req, res, next) => {
   try {
-    const result = await db.query(
+    const r = await db.query(
       `SELECT id, no, tank_name, section, initial_extent_ha,
               to_char(water_start, 'YYYY-MM-DD') AS water_start, to_char(water_end, 'YYYY-MM-DD') AS water_end,
               paddy_target_days, paddy_target_area, paddy_area_percentage,
@@ -188,15 +189,15 @@ datarouter.get('/schedule', async (req, res, next) => {
        FROM water_issue_schedule
        ORDER BY water_start NULLS LAST, tank_name, section NULLS FIRST`
     )
-    return res.status(200).json({ status: 'success', data: result.rows })
-  } catch (error) {
-    return next(error)
+    return res.status(200).json({ status: 'success', data: r.rows })
+  } catch (err) {
+    return next(err)
   }
 })
 
 datarouter.get('/farmer-stats', async (req,res,next) => {
   try {
-    const [totals, districts, months, crops, sources] = await Promise.all([
+    const [totals, dists, months, crops, srcs] = await Promise.all([
       db.query(
         `SELECT count(*)::int AS registered,
                 count(*) FILTER (WHERE is_active)::int AS active,
@@ -219,9 +220,9 @@ datarouter.get('/farmer-stats', async (req,res,next) => {
          LEFT JOIN farmers f ON date_trunc('month', f.created_at) = m
          GROUP BY m ORDER BY m`
       ),
-      // A farmer growing two crops counts once for each
+      // by category (paddy, vegetables..). a farmer with 2 crops counts for both
       db.query(
-        `SELECT coalesce(nullif(c.crop_type, ''), nullif(f.primary_crop, ''), 'Not given') AS crop,
+        `SELECT coalesce(nullif(c.category, ''), 'not_given') AS crop,
                 count(DISTINCT f.farmer_id)::int AS farmers
          FROM farmers f LEFT JOIN farm_crops c ON c.farm_id = f.farm_id
          GROUP BY 1 ORDER BY farmers DESC, crop`
@@ -236,14 +237,14 @@ datarouter.get('/farmer-stats', async (req,res,next) => {
       status: 'success',
       data: {
         ...totals.rows[0],
-        byDistrict: districts.rows,
+        byDistrict: dists.rows,
         byMonth: months.rows,
         crops: crops.rows,
-        waterSources: sources.rows
+        waterSources: srcs.rows
       }
     })
-  }catch(error){
-    return next(error)
+  }catch(err){
+    return next(err)
   }
 })
 

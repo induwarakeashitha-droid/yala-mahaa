@@ -6,26 +6,45 @@ import TankPicker from '../components/TankPicker.jsx';
 import Icon from '../components/Icon.jsx';
 import { COLORS } from '../theme.js';
 import { fmtDay } from '../components/ForecastChart.jsx';
-import { useFarmReservoirs, useReservoirReadings } from '../api/reservoirs.js';
-import { useFarmRelease } from '../api/nearby.js';
-
-const SHORT = { day: 'numeric', month: 'short' };
+import { LOW_PCT, recentReadings } from '../api/reservoirs.js';
+import { useFarmConditions } from '../api/farm.js';
+import { issueStatus } from '../api/canals.js';
+import { addReminder, removeReminder, useReminders } from '../api/reminders.js';
 
 // Leaflet (~150 KB) only downloads when this page opens.
 const WaterMap = lazy(() => import('../components/WaterMap.jsx'));
 
+const DATE = { day: 'numeric', month: 'short' };
+
 export default function Water() {
-  const { t, lang, farm } = useApp();
-  const tanks = useFarmReservoirs(farm);
-  const tankList = tanks.data || [];
+  const { t, lang, showToast, farm } = useApp();
   const [picked, setPicked] = useState(null);
-  const reservoirId = tankList.some((x) => x.id === picked) ? picked : tankList[0]?.id;
-  const { data, error, reload } = useReservoirReadings(reservoirId);
-  const release = useFarmRelease(farm);
-  const week = (data?.history || []).slice(-7);
-  const name = data?.reservoir.name || tankList.find((x) => x.id === reservoirId)?.name || '';
-  const todayIso = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+  const live = useFarmConditions(farm, picked);
+  const { tanks, issue, issues, today: todayIso } = live;
+  const tankList = tanks.data || [];
+  const reservoirId = live.tank?.id;
+  const { data, error, reload } = live.readings;
+  const week = recentReadings(data?.history || []);
+  const name = data?.reservoir.name || live.tank?.name || '';
   const loadError = tanks.error || error;
+
+  // SMS reminder the day before the next water issue starts (sent by the API)
+  const reminders = useReminders(farm?.id);
+  const [saving, setSaving] = useState(false);
+  const canRemind = issue && live.issueStatus === 'scheduled';
+  const remind = Boolean(canRemind && reminders.data?.some((r) => r.schedule_id === issue.id));
+  const toggleRemind = async () => {
+    setSaving(true);
+    try {
+      await (remind ? removeReminder(issue.id) : addReminder(issue.id));
+      reminders.reload();
+      showToast(remind ? t('reminderOff') : t('reminderOnToast'));
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="water-screen">
@@ -54,7 +73,7 @@ export default function Water() {
         {week.length > 0 && (
           <>
             <div className="chart" role="img" aria-label={`${name} level over the last ${week.length} readings, now ${week[week.length - 1].percent}%`}>
-              <div className="chart-line" style={{ bottom: '40%' }}><span>40%</span></div>
+              <div className="chart-line" style={{ bottom: `${LOW_PCT}%` }}><span>{LOW_PCT}%</span></div>
               {week.map((h, i) => {
                 const last = i === week.length - 1;
                 return (
@@ -78,25 +97,29 @@ export default function Water() {
           <span className="round-arrow"><Icon name="arrow" size={18} color="#fff" stroke={2.4} /></span>
         </Link>
         <div className="hr dark" />
-        <div className="f14 fw600">{t('releaseSchedule')}{release.data ? ` · ${release.data.scheme}` : ''}</div>
-        {!release.data && <div className="f14 dim">{release.loading ? t('loadingRelease') : release.error ? release.error.message : t('noRelease')}</div>}
-        {release.data && (
-          <div className="col gap8">
-            {release.data.sections.map((s) => {
-              const on = s.status === 'flowing';
-              const days = Math.round((Date.parse(s.end) - Date.parse(s.start)) / 864e5) + 1;
-              return (
-                <div key={s.name} className="sched-row">
-                  <span className="sd" style={{ background: on ? 'var(--accent)' : COLORS.muted }} />
-                  <span className={`grow min0 ${s === release.data.main ? 'fw600' : ''}`}>
-                    <span className="block ellipsis">{s.name}</span>
-                    <span className="block f13 dim">{fmtDay(s.start, lang, SHORT)} – {fmtDay(s.end, lang, SHORT)} · {t(s.status)}</span>
-                  </span>
-                  <span className="dim nowrap">{days} {t('days')}</span>
-                </div>
-              );
-            })}
+        <div className="f14 fw600">{t('releaseSchedule')}</div>
+        {!issues.length && (
+          <div className="f14 dim lh">
+            {live.canals.error ? live.canals.error.message : !live.canals.data ? t('loadingSchedule') : `${t('noSchedule')}${farm?.water?.name || live.own?.name ? ` - ${farm?.water?.name || live.own?.name}` : ''}`}
           </div>
+        )}
+        <div className="col gap8">
+          {issues.map((c) => {
+            const on = c === issue;
+            return (
+              <div key={c.id} className="sched-row">
+                <span className="sd" style={{ background: on ? 'var(--accent)' : COLORS.muted }} />
+                <span className={`grow ${on ? 'fw600' : ''}`}>{c.name}</span>
+                <span className="dim nowrap">{fmtDay(c.start, lang, DATE)} – {fmtDay(c.end, lang, DATE)} - {t(issueStatus(c, todayIso))}</span>
+              </div>
+            );
+          })}
+        </div>
+        {canRemind && (
+          <button type="button" className={`pill-btn ${remind ? 'accent' : 'white'} big`} onClick={toggleRemind} disabled={saving || !reminders.data}>
+            {remind ? t('reminderOn') : t('remindSms')}
+            <span className="round-arrow"><Icon name={remind ? 'check' : 'bell'} size={18} color="#fff" stroke={2.2} /></span>
+          </button>
         )}
       </div>
     </div>

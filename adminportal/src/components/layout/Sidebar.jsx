@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   ChevronRight,
   ChevronsLeft,
+  ClipboardList,
   Database,
   Droplets,
   LayoutDashboard,
@@ -10,13 +11,12 @@ import {
   ShieldCheck,
   Users,
   Waves,
-  Wrench,
 } from 'lucide-react'
 import { cn } from '../../utils/format'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 
-const navItems = ({ TANK_SUMMARY, FLOOD_ALERTS }) => [
+const navItems = ({ TANK_SUMMARY, FLOOD_ALERTS, REPORT_COUNTS }) => [
   {
     to: '/',
     label: 'Dashboard',
@@ -41,6 +41,14 @@ const navItems = ({ TANK_SUMMARY, FLOOD_ALERTS }) => [
     tone: 'warning',
   },
   {
+    to: '/reports',
+    label: 'Canal Reports',
+    hint: 'Problems farmers reported',
+    icon: ClipboardList,
+    count: REPORT_COUNTS.new,
+    tone: 'warning',
+  },
+  {
     to: '/sms',
     label: 'SMS Gateway',
     hint: 'Alerts & campaigns',
@@ -51,12 +59,6 @@ const navItems = ({ TANK_SUMMARY, FLOOD_ALERTS }) => [
     label: 'Farmer Portal',
     hint: 'Registry & water schedule',
     icon: Users,
-  },
-  {
-    to: '/reports',
-    label: 'Canal Reports',
-    hint: 'Problems farmers reported',
-    icon: Wrench,
   },
   {
     to: '/database',

@@ -30,7 +30,7 @@ export default function RegIdentity() {
         ? <StepHeader step={1} closeTo="/home" />
         : <StepHeader step={1} closeLabel={t('logout')} onClose={() => { logout(); navigate('/login', { replace: true }); }} />}
       <div>
-        <div className="eyebrow">{t('step')} 1 · {t('aboutYou')}</div>
+        <div className="eyebrow">{t('step')} 1 - {t('aboutYou')}</div>
         <h1 className="h1">{t('whoOwns')}</h1>
       </div>
 

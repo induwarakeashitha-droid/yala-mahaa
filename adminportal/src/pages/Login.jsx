@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AlertTriangle, ArrowRight, Droplets, Eye, EyeOff, Loader2, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Eye, EyeOff, Loader2, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export function Login() {
@@ -33,7 +33,7 @@ export function Login() {
       <section className="login-card" aria-label="Sign in to Yala Maha">
         <div className="login-intro">
           <a className="login-brand" href="/" aria-label="Yala Maha home">
-            <span className="login-brand-mark"><Droplets size={21} /></span>
+            <span className="login-brand-mark"><img src={`${import.meta.env.BASE_URL}logo.png`} alt="" draggable="false" /></span>
             <span>Yala <strong>Maha</strong></span>
           </a>
 
@@ -53,7 +53,7 @@ export function Login() {
 
         <div className="login-form-panel">
           <div className="login-form-heading">
-            <span className="login-mobile-mark"><Droplets size={19} /></span>
+            <span className="login-mobile-mark"><img src={`${import.meta.env.BASE_URL}logo.png`} alt="" draggable="false" /></span>
             <h2>Welcome back</h2>
             <p>Enter your credentials to continue.</p>
           </div>
@@ -124,7 +124,7 @@ export function Login() {
           </p>
         </div>
       </section>
-      <footer className="login-footer">Yala Maha <span>·</span> Watering a better future</footer>
+      <footer className="login-footer">Yala Maha <span>-</span> Watering a better future</footer>
     </main>
   )
 }

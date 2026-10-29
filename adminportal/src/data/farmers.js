@@ -1,5 +1,18 @@
 import { formatDate, titleCase } from '../utils/format'
 
+// Crop categories as the farmer app names them (reactfarmerportalmekawenaskrpn/src/data.js)
+export const CROP_CATEGORY_LABELS = {
+  paddy: 'Paddy (rice)',
+  vegetables: 'Vegetables',
+  fruit: 'Fruit',
+  ofc: 'Other field crops',
+  mixed: 'Mixed farming',
+  not_given: 'Not given',
+}
+
+// Older registrations saved the category ("paddy") as the crop name; show it by its proper name
+export const cropName = (value) => (value ? CROP_CATEGORY_LABELS[value] || value : '—')
+
 const CROP_COLORS = ['#2563eb', '#0d9488', '#d97706', '#4f46e5', '#7c3aed', '#db2777', '#a1a1aa']
 
 export const WATER_SOURCE_LABELS = {
@@ -18,6 +31,14 @@ export const formatPhone = (phone = '') => {
   return `+94 ${digits.slice(2, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`
 }
 
+// for csv: local 070 763 7312 form. a leading + makes excel treat it as a formula,
+// and the spaces stop it turning into a number that drops the 0
+export const csvPhone = (phone = '') => {
+  const digits = String(phone).replace(/\D/g, '')
+  if (digits.length !== 11 || !digits.startsWith('94')) return phone || ''
+  return `0${digits.slice(2, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`
+}
+
 // A row from GET /admin/farmers (or /admin/farmers/:id)
 export function farmerFromApi(row) {
   return {
@@ -26,8 +47,9 @@ export function farmerFromApi(row) {
     name: row.full_name,
     district: titleCase(row.district || ''),
     division: row.division || '',
-    scheme: row.reservoir_name ? titleCase(row.reservoir_name) : row.tank_name || '—',
-    crop: row.primary_crop || '—',
+    // The linked reservoir or Mahaweli tank, else the source the farmer named (canal, river, well)
+    scheme: row.reservoir_name || row.tank_name || row.water_name || WATER_SOURCE_LABELS[row.water_source] || '—',
+    crop: cropName(row.primary_crop),
     landAcres: row.land_acres === null ? null : Number(row.land_acres),
     phoneLabel: formatPhone(row.phone),
     status: row.is_active ? 'Active' : 'Inactive',
@@ -68,9 +90,9 @@ export function buildFarmerStats(stats) {
       farmers: row.farmers,
       active: row.active,
     })),
-    // value is a share of farmers, as a percentage
+    // value: the crop's share of all farmer-crop pairs (sizes the donut slices); farmers: how many grow it
     FARMER_CROP_DISTRIBUTION: [
-      ...topCrops.map((crop, index) => ({ name: crop.crop, farmers: crop.farmers, color: CROP_COLORS[index] })),
+      ...topCrops.map((crop, index) => ({ name: cropName(crop.crop), farmers: crop.farmers, color: CROP_COLORS[index] })),
       ...(otherCrops ? [{ name: 'Other', farmers: otherCrops, color: CROP_COLORS.at(-1) }] : []),
     ].map((crop) => ({ ...crop, value: cropTotal ? Math.round((crop.farmers / cropTotal) * 100) : 0 })),
     FARMER_WATER_SOURCES: stats.waterSources.map((row) => ({

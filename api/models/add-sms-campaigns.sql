@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS sms_campaigns (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   admin_id    UUID REFERENCES admins(admin_id) ON DELETE SET NULL,
-  audience    TEXT NOT NULL,              -- e.g. "All active farmers", "District · Polonnaruwa"
+  audience    TEXT NOT NULL,              -- e.g. "All active farmers", "District - Polonnaruwa"
   message     TEXT NOT NULL,
   recipients  INT NOT NULL CHECK (recipients >= 0),
   delivered   INT NOT NULL DEFAULT 0 CHECK (delivered >= 0),

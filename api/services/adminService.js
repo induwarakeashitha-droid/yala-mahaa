@@ -6,75 +6,77 @@ const BCRYPT_ROUNDS = 12
 const ADMIN_ROLES = ['officer', 'admin', 'super_admin']
 const ADMIN_COLUMNS = 'admin_id, full_name, username, role, is_active, created_at, last_login_at'
 
-// Compared against when the username doesn't exist, so a wrong username takes as long as a wrong password
+// security: compared against when the username doesn't exist, so a wrong username takes as long as a wrong password (no user enumeration by timing)
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', BCRYPT_ROUNDS)
 
-const isBcryptHash = (value) => /^\$2[aby]\$\d{2}\$/.test(value || '')
+const isBcryptHash = (val) => /^\$2[aby]\$\d{2}\$/.test(val || '')
 
+// security: constant time compare for old plain-text passwords, so timing doesn't leak how much matched
 function sameText(a, b) {
-    const hashA = crypto.createHash('sha256').update(String(a)).digest()
-    const hashB = crypto.createHash('sha256').update(String(b)).digest()
-    return crypto.timingSafeEqual(hashA, hashB)
+    const ha = crypto.createHash('sha256').update(String(a)).digest()
+    const hb = crypto.createHash('sha256').update(String(b)).digest()
+    return crypto.timingSafeEqual(ha, hb)
 }
 
-function validatePassword(password) {
-    if (typeof password !== 'string' || password.length < 10) return 'Password must be at least 10 characters.'
-    if (password.length > 72) return 'Password must be at most 72 characters.'   // bcrypt only uses the first 72 bytes
+// security: min length 10, max 72 because bcrypt ignores anything past 72 bytes
+function validatePassword(pw) {
+    if (typeof pw !== 'string' || pw.length < 10) return 'Password must be at least 10 characters.'
+    if (pw.length > 72) return 'Password must be at most 72 characters.'
     return null
 }
 
-// The active admin with this username and password, or null.
-// Accounts created before passwords were hashed are upgraded to bcrypt on their first sign-in.
-async function verifyAdminLogin(username, password) {
-    const result = await db.query(
+// returns the active admin or null. old plain-text passwords get upgraded to bcrypt on first login
+async function verifyAdminLogin(username, pw) {
+    const r = await db.query(
         `SELECT ${ADMIN_COLUMNS}, password_hash FROM admins WHERE username = $1`,
         [username]
     )
-    const admin = result.rows[0]
+    const admin = r.rows[0]
     if (!admin){
-        await bcrypt.compare(password, DUMMY_HASH)
+        await bcrypt.compare(pw, DUMMY_HASH)
         return null
       }
 
-    const { password_hash, ...publicAdmin } = admin
-    let valid
+    const { password_hash, ...pub } = admin
+    let ok
     if (isBcryptHash(password_hash)) {
-        valid = await bcrypt.compare(password, password_hash)
+        ok = await bcrypt.compare(pw, password_hash)
     }
     else {
-        valid = sameText(password, password_hash)
-        if (valid) {
-            await db.query('UPDATE admins SET password_hash = $2 WHERE admin_id = $1', [admin.admin_id, await bcrypt.hash(password, BCRYPT_ROUNDS)])
+        ok = sameText(pw, password_hash)
+        if (ok) {
+            await db.query('UPDATE admins SET password_hash = $2 WHERE admin_id = $1', [admin.admin_id, await bcrypt.hash(pw, BCRYPT_ROUNDS)])
         }
     }
-    if (!valid || !admin.is_active) return null
-    return publicAdmin
+    if (!ok || !admin.is_active) return null
+    return pub
 }
 
 async function createAdmin({ username, password, full_name, role }) {
-    const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS)
-    const result = await db.query(
+    const hash = await bcrypt.hash(password, BCRYPT_ROUNDS)
+    const r = await db.query(
         `INSERT INTO admins (full_name, username, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING ${ADMIN_COLUMNS}`,
-        [full_name, username, password_hash, role]
+        [full_name, username, hash, role]
     )
-    return result.rows[0]
+    return r.rows[0]
 }
 
-async function changeAdminPassword(adminId, currentPassword, newPassword) {
-    const result = await db.query('SELECT password_hash FROM admins WHERE admin_id = $1', [adminId])
-    const stored = result.rows[0]?.password_hash
+async function changeAdminPassword(adminId, curPw, newPw) {
+    const r = await db.query('SELECT password_hash FROM admins WHERE admin_id = $1', [adminId])
+    const stored = r.rows[0]?.password_hash
     if (!stored) return false
-    const valid = isBcryptHash(stored) ? await bcrypt.compare(currentPassword, stored) : sameText(currentPassword, stored)
-    if (!valid) return false
-    await db.query('UPDATE admins SET password_hash = $2 WHERE admin_id = $1', [adminId, await bcrypt.hash(newPassword, BCRYPT_ROUNDS)])
+    // security: must know the current password before it can be changed
+    const ok = isBcryptHash(stored) ? await bcrypt.compare(curPw, stored) : sameText(curPw, stored)
+    if (!ok) return false
+    await db.query('UPDATE admins SET password_hash = $2 WHERE admin_id = $1', [adminId, await bcrypt.hash(newPw, BCRYPT_ROUNDS)])
     return true
 }
 
 
 
 async function findAdminById(adminId){
-    const result = await db.query(`SELECT ${ADMIN_COLUMNS} FROM admins WHERE admin_id = $1`, [adminId])
-    return result.rows[0] || null
+    const r = await db.query(`SELECT ${ADMIN_COLUMNS} FROM admins WHERE admin_id = $1`, [adminId])
+    return r.rows[0] || null
 }
 
 module.exports = {

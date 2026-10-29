@@ -7,27 +7,22 @@ import Sheet from '../components/Sheet.jsx';
 import { CROP_CATALOG, PHOTOS } from '../data.js';
 import TankPicker from '../components/TankPicker.jsx';
 import { fmtDay } from '../components/ForecastChart.jsx';
-import { forecastRisk, useFarmReservoirs, useReservoirForecast, useReservoirReadings } from '../api/reservoirs.js';
-import { farmPin, rainAdviceKey, useFarmGauge, useFarmRelease, useRainForecast, weatherIcon } from '../api/nearby.js';
-import { fill, useFarmAlerts } from '../api/alerts.js';
+import { LOW_PCT, forecastRisk, recentReadings, useReservoirForecast } from '../api/reservoirs.js';
+import { useFarmConditions } from '../api/farm.js';
+import { rainAdvice } from '../api/weather.js';
+import { useAlerts } from '../api/alerts.js';
 import { COLORS } from '../theme.js';
 
 // Standard weather symbols, tinted like Apple Weather (see .wx-* in styles.css).
 const WX_ICON = { sun: 'sun', cloud: 'cloudSun', rain: 'rain' };
 const RISK_KEY ={ spill: 'spillRisk', lowWater: 'lowRisk', stable: 'stable' };
-const FLOOD_STEPS = ['floodStep1', 'floodStep2', 'floodStep3', 'floodStep4', 'floodStep5'];
-const TREND_ARROW = { rising: '↑', falling: '↓', steady: '→' };
-const SHORT = { day: 'numeric', month: 'short' };
-
-const km = (m) => `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
-const slTime = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Colombo' });
 
 // One-line 14-day outlook inside the tank card; the full chart lives on /forecast.
 function ForecastRow({ reservoirId, t }) {
   const { data, error } = useReservoirForecast(reservoirId);
   const risk = data ? forecastRisk(data) : null;
   let line = t('loadingForecast');
-  if (data) line = `${Math.round(data.next)}% ${t('in14')} · ${data.change >= 0 ? '+' : ''}${data.change}%`;
+  if (data) line = `${Math.round(data.next)}% ${t('in14')} - ${data.change >= 0 ? '+' : ''}${data.change}%`;
   else if (error) line = error.reason ? t(error.reason) : error.message;
   return (
     <Link to={`/forecast?reservoir=${reservoirId}`} className="forecast-row">
@@ -44,17 +39,19 @@ function ForecastRow({ reservoirId, t }) {
 
 // Department of Agriculture seasons: Yala April–August, Maha September–March
 const season = (date) => (date.getMonth() >= 3 && date.getMonth() <= 7 ? 'yala' : 'maha');
+// General flood safety steps (i18n keys)
+const FLOOD_STEPS = ['floodStep1', 'floodStep2', 'floodStep3', 'floodStep4', 'floodStep5'];
 
 // Level, storage and the last week of readings for one reservoir, all from the API.
 function TankCard({ tanks, reservoirId, readings, onPick, lang, t }) {
   const { data, loading, error, reload } = readings;
   const latest = data?.latest;
-  const week = (data?.history || []).slice(-7);
+  const week = recentReadings(data?.history || []);
   const prev = week.length > 1 ? week[week.length - 2] : null;
   const perDay = latest && prev && latest.date > prev.date
     ? Math.round(((latest.percent - prev.percent) / ((Date.parse(latest.date) - Date.parse(prev.date)) / 864e5)) * 10) / 10
     : null;
-  const status = latest ? (latest.percent < 30 ? 'low' : 'safe') : null;
+  const status = latest ? (latest.percent < LOW_PCT ? 'low' : 'safe') : null;
 
   return (
     <Card>
@@ -80,7 +77,7 @@ function TankCard({ tanks, reservoirId, readings, onPick, lang, t }) {
             <div>
               <div className="big-num">{Math.round(latest.percent)}<span>%</span></div>
               <div className="f14 muted" style={{ marginTop: 6 }}>
-                {t('full')} · {latest.storage?.toLocaleString()}{data.reservoir.capacity ? ` / ${data.reservoir.capacity.toLocaleString()}` : ''} ac-ft
+                {t('full')} - {latest.storage?.toLocaleString()}{data.reservoir.capacity ? ` / ${data.reservoir.capacity.toLocaleString()}` : ''} ac-ft
               </div>
             </div>
             <div className="bars" role="img" aria-label={`Tank level over the last ${week.length} readings, now ${latest.percent}%`}>
@@ -89,7 +86,7 @@ function TankCard({ tanks, reservoirId, readings, onPick, lang, t }) {
               ))}
             </div>
           </div>
-          {latest.spilling && latest.spillRate != null && <div className="f13 muted">{t('spilling')} · {latest.spillRate} cusec</div>}
+          {latest.spilling && latest.spillRate != null && <div className="f13 muted">{t('spilling')} - {latest.spillRate} cusec</div>}
           <div className="hr" />
           <div className="grid3 f13">
             <div><div className="muted">{t('changeDay')}</div><div className="f15 fw600">{perDay == null ? '–' : `${perDay >= 0 ? '+' : ''}${perDay}%`}</div></div>
@@ -103,113 +100,8 @@ function TankCard({ tanks, reservoirId, readings, onPick, lang, t }) {
   );
 }
 
-// The nearest river gauge to the farm, shown only when it is at or above its alert level.
-function FloodCard({ gauge, t, onAdvice }) {
-  return (
-    <Card className="flood-card">
-      <div className="row gap10">
-        <span className="warn-badge"><Icon name="warn" size={14} stroke={2.6} />{t(`floodLevel${gauge.floodLevel}`).toUpperCase()} · {t('level')} {gauge.floodLevel} {t('of')} 3</span>
-        <div className="grow" />
-        {gauge.at && <span className="f12 muted">{slTime(gauge.at)}</span>}
-      </div>
-      <div className="f22 fw600 lh-tight">{fill(t(`floodTitle${gauge.floodLevel}`), { river: gauge.river })}</div>
-      <div className="f14 muted lh">
-        {t('riverGauge')} {gauge.name} <b className="ink">{gauge.level} m</b>
-        {gauge.trend && <> <b className={gauge.trend === 'rising' ? 'warning-text' : 'ink'}>{TREND_ARROW[gauge.trend]} {t(gauge.trend)}</b></>}
-        {' · '}{km(gauge.d)} {t('away')}
-      </div>
-      <ol className="steps">
-        {FLOOD_STEPS.slice(0, 2).map((k, i) => <li key={k}><span className="num-badge">{i + 1}</span>{t(k)}</li>)}
-      </ol>
-      <button type="button" className="pill-btn white big" onClick={onAdvice}>
-        {t('seeAdvice')}<span className="round-arrow"><Icon name="arrow" size={18} color="#fff" stroke={2.2} /></span>
-      </button>
-    </Card>
-  );
-}
-
-// The farm's canal from the water issue schedule: flowing now, starting soon, or finished.
-function ReleaseCard({ release, lang, t }) {
-  const c = release.main;
-  const day = (d) => fmtDay(d, lang, SHORT);
-  const tileDate = c.status === 'scheduled' ? c.start : c.end;
-  const headline = c.status === 'flowing' ? fill(t('flowingUntil'), { date: day(c.end) })
-    : c.status === 'scheduled' ? fill(t('startsOn'), { date: day(c.start) }) : fill(t('endedOn'), { date: day(c.end) });
-  return (
-    <Link to="/water" className="card link-card">
-      <div className="f15 fw600">{t('nextRelease')}</div>
-      <div className="row gap14">
-        <div className="date-tile"><small>{fmtDay(tileDate, lang, { weekday: 'short' }).toUpperCase()}</small><b>{fmtDay(tileDate, lang, { day: 'numeric' })}</b></div>
-        <div className="min0">
-          <div className="f22 fw600 tight">{headline}</div>
-          <div className="f14 muted ellipsis">{c.name} · {day(c.start)} – {day(c.end)}</div>
-        </div>
-      </div>
-      <div className="seg seg-soft" aria-label="Water flow status">
-        <span className={c.status === 'flowing' ? 'on' : ''}>{t('flowing')}</span>
-        <span className={c.status === 'scheduled' ? 'on' : ''}>● {t('scheduled')}</span>
-        <span className={c.status === 'closed' ? 'on' : ''}>{t('closed')}</span>
-      </div>
-    </Link>
-  );
-}
-
-// Rain over the next 3 days at the farm pin (Open-Meteo), with advice from the amounts.
-function RainCard({ farm, lang, t }) {
-  const rain = useRainForecast(farm);
-  const [idx, setIdx] = useState(0);
-  if (!farmPin(farm)) return null;
-  const place = farm.division || farm.district || t('yourFarm');
-  const header = (
-    <div className="row between">
-      <div className="f15 fw600">{t('rain3')}</div>
-      <span className="f13 muted row gap6"><Icon name="pin" size={14} />{place}</span>
-    </div>
-  );
-  if (!rain.data) {
-    return (
-      <Card className="weather-card">
-        {header}
-        <div className="row between gap8 f14">
-          <span className="muted">{rain.error ? t('rainOffline') : t('loadingRain')}</span>
-          {rain.error && <button type="button" className="link-btn" onClick={rain.reload}>{t('tryAgain')}</button>}
-        </div>
-      </Card>
-    );
-  }
-  const days = rain.data;
-  const day = days[Math.min(idx, days.length - 1)];
-  const label = (d, i) => (i === 0 ? t('today') : fmtDay(d.date, lang, { weekday: 'short' }));
-  const icon = (d) => weatherIcon(d.code, d.mm);
-  return (
-    <Card className="weather-card">
-      {header}
-      <div className="row gap12 weather-hero">
-        <span className={`wx wx-${icon(day)}`}><Icon name={WX_ICON[icon(day)]} size={88} stroke={1.5} /></span>
-        <div className="grow right">
-          <div className="weather-num">{day.mm}<span>mm</span></div>
-          <div className="f15 fw600 brand-text">{label(day, days.indexOf(day))}{day.chance != null ? ` · ${day.chance}%` : ''}{day.mm >= 25 ? ' · ↑' : ''}</div>
-        </div>
-      </div>
-      <div className="day-strip" role="radiogroup" aria-label={t('rain3')}>
-        {days.map((d, i) => (
-          <button key={d.date} type="button" role="radio" aria-checked={i === idx}
-            className={`day-chip ${i === idx ? 'on' : ''}`} onClick={() => setIdx(i)}>
-            <span className="f13 fw600">{label(d, i)}</span>
-            <span className={`wx wx-${icon(d)}`}><Icon name={WX_ICON[icon(d)]} size={30} stroke={2} /></span>
-            <span className="f15 fw600">{d.mm} mm</span>
-          </button>
-        ))}
-      </div>
-      <div className="note-box accent">
-        <Icon name="spark" size={20} stroke={1.8} style={{ flex: 'none' }} />
-        <span><b>{t('advice')}:</b> {t(rainAdviceKey(days))}</span>
-      </div>
-    </Card>
-  );
-}
-
-export function FieldCards({ farm, t }) {
+// needsWater: from useFarmConditions (tank + rain), null while unknown.
+export function FieldCards({ farm, needsWater = null, t }) {
   if (!farm) {
     return (
       <Card className="register-cta">
@@ -222,14 +114,14 @@ export function FieldCards({ farm, t }) {
   return (
     <div className="field-grid">
       {farm.crops.map((c) => {
-        const paddy = c.category === 'paddy';
         return (
           <Link to="/fields" key={c.id} className="field-card">
-            <Aerial variant={paddy ? 'b' : 'a'} height={110} photo={paddy ? PHOTOS.paddy : PHOTOS.harvest} />
+            <Aerial variant={needsWater ? 'a' : 'b'} height={110} photo={needsWater ? PHOTOS.harvest : PHOTOS.paddy} />
             <div className="fc-foot">
               <div className="min0">
-                <div className="f15 fw600 ellipsis">{c.type.replace(/ \(.*\)/, '')} · {c.variety.split(' (')[0]}</div>
-                <div className="f12 muted">{c.acres} ac · {CROP_CATALOG[c.category]?.short || CROP_CATALOG[c.category]?.label}</div>
+                <div className="f15 fw600 ellipsis">{c.type.replace(/ \(.*\)/, '')} - {c.variety.split(' (')[0]}</div>
+                <div className="f12 muted">{c.acres} ac - {CROP_CATALOG[c.category]?.short || CROP_CATALOG[c.category]?.label}</div>
+                {needsWater != null && <StatusLabel status={needsWater ? 'watch' : 'safe'}>{t(needsWater ? 'needsWater' : 'fieldGood')}</StatusLabel>}
               </div>
               <span className="round-arrow"><Icon name="chevron" size={14} stroke={2.6} color="#fff" /></span>
             </div>
@@ -240,25 +132,144 @@ export function FieldCards({ farm, t }) {
   );
 }
 
+const hhmm = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Colombo' });
+
+// Nearest river gauge: a full warning card at alert level or above, a short line otherwise.
+function FloodCard({ flood, rivers, onAdvice, t }) {
+  if (!flood) {
+    if (!rivers.data) return null;
+    return <Card><div className="f14 muted">{t('noGaugeNear')}</div></Card>;
+  }
+  const gaugeLine = (
+    <>
+      {flood.river} - {flood.name}: <b className="ink">{flood.gaugeLevel} m</b>
+      {flood.trend && <> <b className={flood.trend === 'rising' ? 'warning-text' : ''}>{flood.trend === 'rising' ? '↑' : flood.trend === 'falling' ? '↓' : '→'} {t(flood.trend)}</b></>}
+    </>
+  );
+  if (!flood.level) {
+    return (
+      <Card>
+        <div className="row between gap8">
+          <span className="f15 fw600">{t('riverNormal')}</span>
+          <span className="f12 muted">{hhmm(flood.at)}</span>
+        </div>
+        <div className="f14 muted lh">{gaugeLine} - {t('alertAt')} {flood.alert} m</div>
+      </Card>
+    );
+  }
+  return (
+    <Card className="flood-card">
+      <div className="row gap10">
+        <span className="warn-badge"><Icon name="warn" size={14} stroke={2.6} />{t('floodWatch').toUpperCase()} - {t('level')} {flood.level} {t('of')} {flood.max}</span>
+        <div className="grow" />
+        <span className="f12 muted">{hhmm(flood.at)}</span>
+      </div>
+      <div className="f22 fw600 lh-tight">{flood.river} - {t(`floodLevel${flood.level}`)}</div>
+      <div className="f14 muted lh">{t('riverGauge')} {gaugeLine}</div>
+      <ol className="steps">
+        {FLOOD_STEPS.slice(0, 2).map((st, i) => <li key={st}><span className="num-badge">{i + 1}</span>{t(st)}</li>)}
+      </ol>
+      <button type="button" className="pill-btn white big" onClick={onAdvice}>
+        {t('seeAdvice')}<span className="round-arrow"><Icon name="arrow" size={18} color="#fff" stroke={2.2} /></span>
+      </button>
+    </Card>
+  );
+}
+
+const DAY = { weekday: 'short' };
+const DATE = { day: 'numeric', month: 'short' };
+
+// The farm's water issue from the Mahaweli schedule (dates only; the schedule has no times).
+export function ReleaseCard({ farm, issue, status, canals, own, lang, t }) {
+  if (!issue) {
+    const source = farm?.water?.name || own?.name;
+    return (
+      <Link to="/water" className="card link-card">
+        <div className="f15 fw600">{t('nextRelease')}</div>
+        <div className="f14 muted lh">{canals.error ? canals.error.message : !canals.data ? t('loadingSchedule') : `${t('noSchedule')}${source ? ` - ${source}` : ''}`}</div>
+      </Link>
+    );
+  }
+  const shown = status === 'scheduled' ? issue.start : issue.end;
+  const line = { scheduled: 'issueStarts', flowing: 'issueUntil', closed: 'issueEnded' }[status];
+  return (
+    <Link to="/water" className="card link-card">
+      <div className="f15 fw600">{t('nextRelease')}</div>
+      <div className="row gap14">
+        <div className="date-tile"><small>{fmtDay(shown, lang, DAY).toUpperCase()}</small><b>{Number(shown.slice(8))}</b></div>
+        <div className="min0">
+          <div className="f22 fw600 tight">{t(line)} {fmtDay(shown, lang, DATE)}</div>
+          <div className="f14 muted ellipsis">{issue.name} - {fmtDay(issue.start, lang, DATE)} – {fmtDay(issue.end, lang, DATE)}</div>
+        </div>
+      </div>
+      <div className="seg seg-soft" aria-label="Water flow status">
+        <span className={status === 'flowing' ? 'on' : ''}>{t('flowing')}</span>
+        <span className={status === 'scheduled' ? 'on' : ''}>● {t('scheduled')}</span>
+        <span className={status === 'closed' ? 'on' : ''}>{t('closed')}</span>
+      </div>
+    </Link>
+  );
+}
+
+function RainCard({ rain, place, lang, t }) {
+  const [dayIdx, setDayIdx] = useState(0);
+  if (!rain.data) {
+    if (!rain.error && !rain.loading) return null; // no farm pin or tank location
+    return <Card><div className="f15 fw600">{t('rain3')}</div><div className="f14 muted">{rain.error ? rain.error.message : t('loadingRain')}</div></Card>;
+  }
+  const days = rain.data;
+  const day = days[Math.min(dayIdx, days.length - 1)];
+  const label = (d, i) => (i === 0 ? t('today') : fmtDay(d.date, lang, DAY));
+  return (
+    <Card className="weather-card">
+      <div className="row between">
+        <div className="f15 fw600">{t('rain3')}</div>
+        {place && <span className="f13 muted row gap6 min0"><Icon name="pin" size={14} /><span className="ellipsis">{place}</span></span>}
+      </div>
+      <div className="row gap12 weather-hero">
+        <span className={`wx wx-${day.icon}`}><Icon name={WX_ICON[day.icon]} size={88} stroke={1.5} /></span>
+        <div className="grow right">
+          <div className="weather-num">{day.mm}<span>mm</span></div>
+          <div className="f15 fw600 brand-text">{label(day, days.indexOf(day))}{day.chance != null ? ` - ${day.chance}%` : ''}{day.heavy ? ' - ↑' : ''}</div>
+        </div>
+      </div>
+      <div className="day-strip" role="radiogroup" aria-label={t('rain3')}>
+        {days.map((f, i) => (
+          <button key={f.date} type="button" role="radio" aria-checked={f === day}
+            className={`day-chip ${f === day ? 'on' : ''}`} onClick={() => setDayIdx(i)}>
+            <span className="f13 fw600">{label(f, i)}</span>
+            <span className={`wx wx-${f.icon}`}><Icon name={WX_ICON[f.icon]} size={30} stroke={2} /></span>
+            <span className="f15 fw600">{f.mm} mm</span>
+          </button>
+        ))}
+      </div>
+      <div className="note-box accent">
+        <Icon name="spark" size={20} stroke={1.8} style={{ flex: 'none' }} />
+        <span><b>{t('advice')}:</b> {t(rainAdvice(days))}</span>
+      </div>
+      <div className="f12 muted">{t('rainSource')}</div>
+    </Card>
+  );
+}
+
 export default function Home() {
-  const { t, lang, user, farm, readAlerts } = useApp();
-  const tanks = useFarmReservoirs(farm);
+  const { t, lang, user, farm } = useApp();
+  const smsEnabled = farm?.smsEnabled !== false; // saved on the server from Profile
   const [picked, setPicked] = useState(null);
+  const live = useFarmConditions(farm, picked);
+  const { tanks, readings, flood } = live;
   const tankList = tanks.data || [];
-  const reservoirId = tankList.some((x) => x.id === picked) ? picked : tankList[0]?.id;
-  const readings = useReservoirReadings(reservoirId);
-  const gauge = useFarmGauge(farm).data;
-  const release = useFarmRelease(farm).data;
-  const alerts = useFarmAlerts(farm, t, lang);
+  const reservoirId = live.tank?.id;
   const [adviceOpen, setAdviceOpen] = useState(false);
-  const unread = alerts.filter((a) => !readAlerts.includes(a.id)).length;
+  const unread = useAlerts(live).filter((a) => !a.read).length;
   const firstName = farm?.name?.split(' ')[0];
   const today = new Date();
-  const flooding = gauge?.floodLevel > 0;
 
   const refresh = () => {
     if (!tanks.data) tanks.reload();
     readings.reload();
+    live.rivers.reload();
+    live.rain.reload();
   };
 
   return (
@@ -277,52 +288,48 @@ export default function Home() {
           <h1 className="h1 xl">{t('farmOverview')}</h1>
         </div>
         <button type="button" className={`chip-white btn ${readings.loading || tanks.loading ? 'spinning' : ''}`} onClick={refresh} aria-label="Refresh readings">
-          <Icon name="refresh" size={14} stroke={2.4} /> {fmtDay(readings.data?.latest?.date || today.toISOString().slice(0, 10), lang, { day: 'numeric', month: 'short' })} · {t(season(today))}
+          <Icon name="refresh" size={14} stroke={2.4} /> {fmtDay(readings.data?.latest?.date || live.today, lang, { day: 'numeric', month: 'short' })} - {t(season(today))}
         </button>
       </div>
 
       {/* Flood alert first — the most urgent question */}
-      {flooding && <FloodCard gauge={gauge} t={t} onAdvice={() => setAdviceOpen(true)} />}
+      <FloodCard flood={flood} rivers={live.rivers} onAdvice={() => setAdviceOpen(true)} t={t} />
 
       {reservoirId != null ? (
         <TankCard tanks={tankList} reservoirId={reservoirId} readings={readings} onPick={setPicked} lang={lang} t={t} />
       ) : (
         <Card>
           <div className="row between gap8 f14">
-            <span className="muted">{tanks.error ? tanks.error.message : tanks.loading ? t('loadingReadings') : t('noTankNear')}</span>
+            <span className="muted">{tanks.error ? tanks.error.message : t('loadingReadings')}</span>
             {tanks.error && <button type="button" className="link-btn" onClick={tanks.reload}>{t('tryAgain')}</button>}
           </div>
         </Card>
       )}
 
-      {release && <ReleaseCard release={release} lang={lang} t={t} />}
+      <ReleaseCard farm={farm} issue={live.issue} status={live.issueStatus} canals={live.canals} own={live.own} lang={lang} t={t} />
 
-      <RainCard farm={farm} lang={lang} t={t} />
+      <RainCard rain={live.rain} place={farm?.nearest || live.own?.name} lang={lang} t={t} />
 
       <div className="row between" style={{ marginTop: 4 }}>
         <h2 className="h2">{t('myFields')}{farm ? ` (${farm.crops.length})` : ''}</h2>
         {farm && <Link to="/fields" className="f14 fw600 ink">{t('editCrops')}</Link>}
       </div>
-      <FieldCards farm={farm} t={t} />
+      <FieldCards farm={farm} needsWater={live.needsWater} t={t} />
 
       <Card className="sms-card">
         <div className="icon-tile green"><Icon name="sms" size={24} color={COLORS.success} /></div>
         <div className="grow min0">
-          <div className="f15 fw600">{farm?.smsEnabled !== false ? t('smsConnected') : t('smsOff')}</div>
-          <div className="f13 muted">{maskPhone(user.phone)} · {t('worksNoData')}</div>
+          <div className="f15 fw600">{smsEnabled ? t('smsConnected') : t('smsOff')}</div>
+          <div className="f13 muted">{maskPhone(user.phone)} - {t('worksNoData')}</div>
         </div>
       </Card>
 
-      {flooding && (
-        <Sheet open={adviceOpen} onClose={() => setAdviceOpen(false)} title={`${gauge.river} · ${t(`floodLevel${gauge.floodLevel}`)}`}>
-          <div className="f14 muted">
-            {gauge.name} · {gauge.level} m · {t('alertMark')} {gauge.alert ?? '–'} m · {t('minorFlood')} {gauge.minor ?? '–'} m · {t('majorFlood')} {gauge.major ?? '–'} m
-          </div>
-          <div className="level-meter" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }} aria-hidden="true">
-            {[1, 2, 3].map((n) => <span key={n} className={n <= gauge.floodLevel ? `on l${n + 1}` : ''} />)}
-          </div>
+      {flood?.level > 0 && (
+        <Sheet open={adviceOpen} onClose={() => setAdviceOpen(false)} title={`${flood.river} - ${t('floodWatch')}`}>
+          <div className="f14 muted">{t('level')} {flood.level} {t('of')} {flood.max} - {flood.name} {flood.gaugeLevel} m</div>
+          <div className="level-meter" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }} aria-hidden="true">{[1, 2, 3].map((n) => <span key={n} className={n <= flood.level ? `on l${n + 1}` : ''} />)}</div>
           <ol className="steps light">
-            {FLOOD_STEPS.map((k, i) => <li key={k}><span className="num-badge">{i + 1}</span>{t(k)}</li>)}
+            {FLOOD_STEPS.map((st, i) => <li key={st}><span className="num-badge">{i + 1}</span>{t(st)}</li>)}
           </ol>
           <Link to="/water" className="pill-btn dark big" onClick={() => setAdviceOpen(false)}>{t('tankCanals')} <Icon name="arrow" size={18} stroke={2.2} /></Link>
         </Sheet>

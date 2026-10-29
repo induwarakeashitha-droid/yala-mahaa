@@ -213,7 +213,11 @@ export function StatusDonut({ data, total, centerLabel = 'Reservoirs', size = 20
 
 // warning is the gauge's alert level
 export function RiverHydrograph({ data, warning, major }) {
-  const maxValue = Math.max(major + 0.8, ...data.map((point) => point.level))
+  // warning/major are null for gauges without flood levels: no lines, axis fits the data
+  const levels = data.map((point) => point.level).filter((level) => level !== null)
+  const maxValue = Math.max((major ?? 0) + 0.8, ...levels, 1)
+  // Some gauges read below 0 m (their datum is above the low-water bed), so the axis must go below 0 for them
+  const minValue = Math.min(0, ...levels.map((level) => Math.floor((level - 0.2) * 2) / 2))
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart data={data} margin={{ top: 18, right: 14, left: -18, bottom: 0 }}>
@@ -227,7 +231,7 @@ export function RiverHydrograph({ data, warning, major }) {
           interval={3}
         />
         <YAxis
-          domain={[0, Number(maxValue.toFixed(1))]}
+          domain={[minValue, Number(maxValue.toFixed(1))]}
           tickLine={false}
           axisLine={false}
           tick={axisTick}
@@ -238,6 +242,7 @@ export function RiverHydrograph({ data, warning, major }) {
           content={<ChartTooltip suffix=" m" formatter={(value) => Number(value).toFixed(2)} />}
           cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '4 4' }}
         />
+{warning !== null && (
         <ReferenceLine
           y={warning}
           stroke={CHART_COLORS.amber}
@@ -251,6 +256,7 @@ export function RiverHydrograph({ data, warning, major }) {
             fontWeight: 600,
           }}
         />
+        )}{major !== null && (
         <ReferenceLine
           y={major}
           stroke={CHART_COLORS.red}
@@ -264,6 +270,7 @@ export function RiverHydrograph({ data, warning, major }) {
             fontWeight: 600,
           }}
         />
+        )}
         <Area isAnimationActive={false}
           type="monotone"
           dataKey="level"
@@ -297,7 +304,7 @@ export function SmsVolumeChart({ data }) {
           content={<ChartTooltip formatter={(value) => formatNumber(value)} />}
           cursor={{ fill: 'var(--surface-2)' }}
         />
-        <Bar isAnimationActive={false} dataKey="delivered" name="Delivered" stackId="a" fill={CHART_COLORS.primary} radius={[3, 3, 0, 0]} barSize={16} />
+        <Bar isAnimationActive={false} dataKey="delivered" name="Sent" stackId="a" fill={CHART_COLORS.primary} radius={[3, 3, 0, 0]} barSize={16} />
         <Bar isAnimationActive={false} dataKey="failed" name="Failed" stackId="a" fill={CHART_COLORS.red} radius={[3, 3, 0, 0]} barSize={16} />
       </BarChart>
     </ResponsiveContainer>

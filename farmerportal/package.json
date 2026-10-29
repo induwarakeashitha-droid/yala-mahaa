@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "reservoirs": "node scripts/build-reservoirs.mjs",
-    "dev:phone": "vite --host --mode phone"
+    "dev:phone": "vite --host --mode phone",
+    "dev:apk": "vite --host --mode phone --port 5175 --strictPort"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

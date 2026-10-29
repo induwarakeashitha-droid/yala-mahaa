@@ -259,22 +259,103 @@ CREATE TABLE IF NOT EXISTS sms_campaigns (
 
 CREATE INDEX IF NOT EXISTS idx_sms_campaigns_created ON sms_campaigns (created_at DESC);
 
--- Canal problem reports from the farmer portal
-CREATE TABLE IF NOT EXISTS canal_reports (
-  id          SERIAL PRIMARY KEY,
-  farmer_id   UUID REFERENCES farmers(farmer_id) ON DELETE SET NULL,
-  issue_type  TEXT NOT NULL CHECK (issue_type IN ('blockage', 'leak', 'gate', 'other')),
-  location    TEXT NOT NULL,
-  note        TEXT,
-  photo       BYTEA,                                   -- JPEG, resized by the portal before upload
-  status      TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'inProgress', 'fixed')),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- One row per SMS a campaign sent, with Text.lk's message id for its real delivery status
+CREATE TABLE IF NOT EXISTS sms_messages (
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  campaign_id  BIGINT NOT NULL REFERENCES sms_campaigns(id) ON DELETE CASCADE,
+  phone        TEXT NOT NULL,
+  uid          TEXT,
+  status       TEXT NOT NULL,
+  sms_count    INT,
+  cost         NUMERIC,
+  error        TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  checked_at   TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS idx_canal_reports_farmer ON canal_reports (farmer_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_canal_reports_status ON canal_reports (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sms_messages_campaign ON sms_messages (campaign_id);
+
+
+-- Canal problems reported by farmers, and their photos (see models/add-canal-reports.sql)
+CREATE TABLE IF NOT EXISTS canal_reports (
+  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- shown to farmers as REP-000123
+  -- Kept when a farmer is deleted, so the department's record stays complete
+  farmer_id       UUID REFERENCES farmers(farmer_id) ON DELETE SET NULL,
+  farm_id         TEXT REFERENCES farmers(farm_id) ON UPDATE CASCADE ON DELETE SET NULL,
+  issue_type      TEXT NOT NULL CHECK (issue_type IN ('blockage', 'leak', 'gate', 'no_water', 'other')),
+  -- The canal from the water issue schedule, or a name the farmer typed when it wasn't listed
+  schedule_id     INT REFERENCES water_issue_schedule(id) ON DELETE SET NULL,
+  canal_name      TEXT NOT NULL CHECK (length(canal_name) BETWEEN 1 AND 120),
+  scheme          TEXT,
+  latitude        NUMERIC(10,6) CHECK (latitude BETWEEN -90 AND 90),
+  longitude       NUMERIC(10,6) CHECK (longitude BETWEEN -180 AND 180),
+  description     TEXT CHECK (length(description) <= 1000),
+  status          TEXT NOT NULL DEFAULT 'new'
+                  CHECK (status IN ('new', 'forwarded', 'in_progress', 'resolved', 'rejected')),
+  -- Filled in by admins when the report is passed on to the Irrigation Department
+  forwarded_at    TIMESTAMPTZ,
+  forwarded_to    TEXT,                                               -- office name, email or phone
+  forwarded_by    UUID REFERENCES admins(admin_id) ON DELETE SET NULL,
+  admin_note      TEXT CHECK (length(admin_note) <= 1000),
+  resolved_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK ((latitude IS NULL) = (longitude IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_canal_reports_farmer  ON canal_reports (farmer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_canal_reports_status  ON canal_reports (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_canal_reports_scheme  ON canal_reports (scheme);
 
 DROP TRIGGER IF EXISTS trg_canal_reports_updated_at ON canal_reports;
 CREATE TRIGGER trg_canal_reports_updated_at BEFORE UPDATE ON canal_reports
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Up to 3 photos per report (the API enforces the limit)
+CREATE TABLE IF NOT EXISTS canal_report_photos (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  report_id   BIGINT NOT NULL REFERENCES canal_reports(id) ON DELETE CASCADE,
+  file_name   TEXT NOT NULL UNIQUE,                 -- random name given by the API, e.g. 3f9c...e1.jpg
+  mime_type   TEXT NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp')),
+  size_bytes  INT NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 5242880),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_canal_report_photos_report ON canal_report_photos (report_id);
+
+
+-- SMS reminders before a water issue starts (services/reminderJob.js)
+
+CREATE TABLE IF NOT EXISTS water_reminders (
+  farmer_id    UUID NOT NULL REFERENCES farmers(farmer_id) ON DELETE CASCADE,
+  schedule_id  INT  NOT NULL REFERENCES water_issue_schedule(id) ON DELETE CASCADE,
+  sent_at      TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (farmer_id, schedule_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_water_reminders_unsent ON water_reminders (schedule_id) WHERE sent_at IS NULL;
+
+
+-- Automatic flood alert SMS from the river gauges (services/floodAlertJob.js)
+-- Settings changed from the admin portal
+CREATE TABLE IF NOT EXISTS app_settings (
+  key         TEXT PRIMARY KEY,
+  value       JSONB NOT NULL,
+  updated_by  UUID REFERENCES admins(admin_id) ON DELETE SET NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO app_settings (key, value) VALUES ('flood_auto_alerts', 'true') ON CONFLICT (key) DO NOTHING;
+
+-- One row per gauge: which messages this flood has already sent.
+-- Both reset once the river is back below the alert level.
+CREATE TABLE IF NOT EXISTS gauge_alert_state (
+  basin             TEXT NOT NULL,
+  station           TEXT NOT NULL,
+  alert_sent_at     TIMESTAMPTZ,
+  major_sent_at     TIMESTAMPTZ,
+  alert_campaign_id BIGINT REFERENCES sms_campaigns(id) ON DELETE SET NULL,
+  major_campaign_id BIGINT REFERENCES sms_campaigns(id) ON DELETE SET NULL,
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (basin, station)
+);

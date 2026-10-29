@@ -1,4 +1,5 @@
 import { cn } from '../../utils/format'
+import { useGrowIn } from './useGrowIn'
 
 const TONE_CLASS = {
   primary: 'progress-primary',
@@ -18,10 +19,11 @@ export function Progress({
   className,
 }) {
   const safeValue = Math.min(100, Math.max(0, Number(value) || 0))
+  const drawn = useGrowIn(safeValue)
   return (
     <div className={cn('progress-wrap', className)}>
       <div className={cn('progress-track', `progress-${size}`, TONE_CLASS[tone])}>
-        <span className="progress-value" style={{ width: `${safeValue}%` }} />
+        <span className="progress-value" style={{ width: `${drawn}%` }} />
       </div>
       {showLabel && (
         <span className="progress-label">{label ?? `${safeValue.toFixed(0)}%`}</span>

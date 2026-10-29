@@ -3,57 +3,57 @@ const db = require('../config/db.js')
 const crypto = require('crypto')
 const { withTransaction, saveFarm, getFarm, cropSummary } = require('./farmService.js')
 
-// farm_id is a random 6-hex code, so on the rare clash with another farmer it is drawn again
+// farm_id is a random 6 hex code, retry if it clashes
 const FARM_ID_ATTEMPTS = 5
 
 
 
 //Check if farmer already exists
 async function findFarmerByPhone(phone) {
-    const result = await db.query(
+    const r = await db.query(
         'SELECT farmer_id, full_name, phone FROM farmers WHERE phone = $1 LIMIT 1',
         [phone]
     )
-    return result.rows[0] || null
+    return r.rows[0] || null
 }
 
 async function createFarmer(farmer) {
-    // farm: { water_source, water_name, location_label, crops } from validateFarm, optional
+    // farm (optional) comes from validateFarm
     const { nic, land_acres, primary_crop, farm } = farmer
 
     if (!process.env.NIC_PEPPER) throw new Error('NIC_PEPPER is not set')
 
+    // security: NIC is never stored, only a keyed hash (HMAC with a secret pepper)
     const hashedNic = crypto
         .createHmac('sha256', process.env.NIC_PEPPER)
         .update(nic.trim().toUpperCase())
         .digest('hex')
 
-    // With a crop list, the totals on the farmers row come from it
     const summary = farm?.crops ? cropSummary(farm.crops) : { land_acres, primary_crop }
-  
-    const farmDetails = farm?.crops || !(summary.primary_crop && Number(summary.land_acres) > 0)
+
+    const farmDtl = farm?.crops || !(summary.primary_crop && Number(summary.land_acres) > 0)
         ? farm
         : { ...farm, crops: [{ category: null, crop_type: summary.primary_crop, variety: null, acres: Number(summary.land_acres), last_yield: null, yield_unit: null }] }
 
-    for (let attempt = 1; ; attempt++) {
+    for (let tries = 1; ; tries++) {
         try {
             return await withTransaction(async (client) => {
                 const result = await insertFarmer(client, { ...farmer, ...summary }, hashedNic)
                 await saveFarm(client, result.farm_id, {
-                    water_source: null, water_name: null, location_label: null, ...farmDetails
+                    water_source: null, water_name: null, location_label: null, ...farmDtl
                 })
                 return { result, hashedNic }
             })
-        } catch (error) {
-            if (error.code === '23505' && error.constraint === 'farmers_farm_id_key' && attempt < FARM_ID_ATTEMPTS) continue
-            throw error
+        } catch (err) {
+            if (err.code === '23505' && err.constraint === 'farmers_farm_id_key' && tries < FARM_ID_ATTEMPTS) continue
+            throw err
         }
     }
 }
 
 async function insertFarmer(client, farmer, hashedNic) {
     const { full_name, phone, address, district, division, farm_latitude, farm_longitude, reservoir_id, tank_id, land_acres, primary_crop } = farmer
-    const result = await client.query(
+    const r = await client.query(
         `INSERT INTO farmers (
             full_name, hashed_nic, phone, address, district, division,
             farm_latitude, farm_longitude, reservoir_id, tank_id,
@@ -75,15 +75,16 @@ async function insertFarmer(client, farmer, hashedNic) {
             primary_crop || null
         ]
     )
-    return result.rows[0]
+    return r.rows[0]
 }
 
 const FARMER_COLUMNS = 'farmer_id, farm_id, full_name,phone,address,district,division,farm_latitude, farm_longitude,reservoir_id, tank_id,land_acres, primary_crop, sms_enabled, created_at, updated_at'
 
-// Needs the requireFarmer middleware in front of it
+// needs requireFarmer before it
 async function getFarmerDetails(req,res){
-    const result = await db.query(`SELECT ${FARMER_COLUMNS} FROM farmers WHERE farmer_id =$1`, [req.farmerId])
-    const farmers = await Promise.all(result.rows.map(async (row) => ({ ...row, farm: await getFarm(row.farm_id) })))
+    // security: only ever the logged in farmer's own row (id from the token, not the request)
+    const r = await db.query(`SELECT ${FARMER_COLUMNS} FROM farmers WHERE farmer_id =$1`, [req.farmerId])
+    const farmers = await Promise.all(r.rows.map(async (row) => ({ ...row, farm: await getFarm(row.farm_id) })))
     res.status(200).json(
         {
             status: "success",
@@ -92,59 +93,60 @@ async function getFarmerDetails(req,res){
     )
 }
 
-// Fields a farmer may change themselves. Phone and NIC are their identity, so they stay fixed.
+// security: farmers can only change these. phone + NIC are their identity so they stay fixed
 const UPDATABLE_FIELDS = [
     'full_name', 'address', 'district', 'division', 'farm_latitude', 'farm_longitude',
     'reservoir_id', 'tank_id', 'land_acres', 'primary_crop', 'sms_enabled'
 ]
 
-// Fields only an admin may change, on top of UPDATABLE_FIELDS
+// admins get these on top
 const ADMIN_UPDATABLE_FIELDS = [...UPDATABLE_FIELDS, 'phone', 'hashed_nic', 'is_active']
 
-// Checks the profile fields in a request body. Returns { error } or { changes } holding only
-// the fields that were sent, cleaned up (empty optional text becomes null).
+// returns { error } or { changes } with only the fields that were sent, cleaned (empty optional text -> null)
 function validateFarmerChanges(body) {
-    const changes = {}
-    for (const field of UPDATABLE_FIELDS) {
-        if (body[field] !== undefined) changes[field] = body[field]
+    const chg = {}
+    for (const f of UPDATABLE_FIELDS) {
+        if (body[f] !== undefined) chg[f] = body[f]
     }
-    for (const field of ['full_name', 'address', 'district']) {
-        if (changes[field] === undefined) continue
-        if (typeof changes[field] !== 'string' || !changes[field].trim()) return { error: `${field} cannot be empty.` }
-        changes[field] = changes[field].trim()
+    for (const f of ['full_name', 'address', 'district']) {
+        if (chg[f] === undefined) continue
+        if (typeof chg[f] !== 'string' || !chg[f].trim()) return { error: `${f} cannot be empty.` }
+        chg[f] = chg[f].trim()
     }
-    for (const field of ['division', 'primary_crop']) {
-        if (changes[field] === undefined) continue
-        if (changes[field] != null && typeof changes[field] !== 'string') return { error: `${field} must be text.` }
-        changes[field] = changes[field]?.trim() || null
+    for (const f of ['division', 'primary_crop']) {
+        if (chg[f] === undefined) continue
+        if (chg[f] != null && typeof chg[f] !== 'string') return { error: `${f} must be text.` }
+        chg[f] = chg[f]?.trim() || null
     }
-    for (const field of ['farm_latitude', 'farm_longitude', 'reservoir_id', 'tank_id', 'land_acres']) {
-        if (changes[field] != null && !Number.isFinite(Number(changes[field]))) return { error: `${field} must be a number.` }
+    for (const f of ['farm_latitude', 'farm_longitude', 'reservoir_id', 'tank_id', 'land_acres']) {
+        if (chg[f] != null && !Number.isFinite(Number(chg[f]))) return { error: `${f} must be a number.` }
     }
-    if (changes.sms_enabled !== undefined && typeof changes.sms_enabled !== 'boolean') {
+    if (chg.sms_enabled !== undefined && typeof chg.sms_enabled !== 'boolean') {
         return { error: 'sms_enabled must be true or false.' }
     }
-    if (changes.reservoir_id != null && changes.tank_id != null) {
+    if (chg.reservoir_id != null && chg.tank_id != null) {
         return { error: 'A farmer can be linked to a reservoir or a tank, not both.'}
     }
-    return { changes }
+    return { changes: chg }
 }
 
 async function updateFarmer(farmerId, changes, { fields: allowed = UPDATABLE_FIELDS, client = db } = {}) {
-    const fields = allowed.filter(field => changes[field] !== undefined)
-    if (fields.length === 0) {
-        const result = await client.query(`SELECT ${FARMER_COLUMNS} FROM farmers WHERE farmer_id = $1`, [farmerId])
-        return result.rows[0] || null
+    // security: column names only come from the allowed list, values are always $n params
+    const flds = allowed.filter(f => changes[f] !== undefined)
+    if (flds.length === 0) {
+        const r = await client.query(`SELECT ${FARMER_COLUMNS} FROM farmers WHERE farmer_id = $1`, [farmerId])
+        return r.rows[0] || null
     }
 
-    const sets = fields.map((field, i) => `${field} = $${i + 2}`)
-    const result = await client.query(
+    const sets = flds.map((f, i) => `${f} = $${i + 2}`)
+    const r = await client.query(
         `UPDATE farmers SET ${sets.join(', ')} WHERE farmer_id = $1 RETURNING ${FARMER_COLUMNS}`,
-        [farmerId, ...fields.map(field => changes[field])]
+        [farmerId, ...flds.map(f => changes[f])]
     )
-    return result.rows[0] || null
+    return r.rows[0] || null
 }
 
+// security: same keyed hash as on register, used to look NICs up without storing them
 function hashNic(nic) {
     if (!process.env.NIC_PEPPER) throw new Error('NIC_PEPPER is not set')
     return crypto.createHmac('sha256', process.env.NIC_PEPPER).update(nic.trim().toUpperCase()).digest('hex')
@@ -155,5 +157,3 @@ module.exports = {
     findFarmerByPhone, createFarmer, getFarmerDetails, updateFarmer, validateFarmerChanges, hashNic,
     FARMER_COLUMNS, UPDATABLE_FIELDS, ADMIN_UPDATABLE_FIELDS
 }
-
-

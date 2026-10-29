@@ -32,13 +32,13 @@ export default function SiteFlex({ t }: { t: Dict }) {
         {"  "}
         <div data-stagger="side" style={css({ "--step": "130ms" })} className="site-space-y-4 md:pe-10 pe-4 pb-5">
           {"  "}
-          <SiteFlex2 text="26" text2="Hadapanagala · Feeder canal" text3={fill(t.features.canals.until, { date: "9 Jan" })} month="Sep" />
+          <SiteFlex2 text="26" text2="Hadapanagala - Feeder canal" text3={fill(t.features.canals.until, { date: "9 Jan" })} month="Sep" />
           {"  "}
-          <SiteFlex2 text="05" text2="Udawalawe · Right canal" text3={fill(t.features.canals.until, { date: "18 Jan" })} month="Oct" />
+          <SiteFlex2 text="05" text2="Udawalawe - Right canal" text3={fill(t.features.canals.until, { date: "18 Jan" })} month="Oct" />
           {"  "}
-          <SiteFlex3 text="10" text2="Oct" text3="Kalawewa · Left bank canal" text4={fill(t.features.canals.until, { date: "23 Jan" })} />
+          <SiteFlex3 text="10" text2="Oct" text3="Kalawewa - Left bank canal" text4={fill(t.features.canals.until, { date: "23 Jan" })} />
           {"  "}
-          <SiteFlex3 text="01" text2="Nov" text3="Huruluwewa · Feeder canal" text4={fill(t.features.canals.until, { date: "14 Feb" })} />
+          <SiteFlex3 text="01" text2="Nov" text3="Huruluwewa - Feeder canal" text4={fill(t.features.canals.until, { date: "14 Feb" })} />
         </div>
       </div>
     </div>

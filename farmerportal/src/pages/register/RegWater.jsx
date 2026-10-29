@@ -45,7 +45,7 @@ function TankChooser({ value, isOther, pin, onPick, t }) {
             <span className="grow min0">
               <span className="block fw600 ellipsis">{tk.name}</span>
               <span className="block f13 muted ellipsis">
-                {tk.district} · {tk.division}{tk.d != null ? ` · ${formatDistance(Math.round(tk.d / 100) * 100)}` : ''}
+                {tk.district} - {tk.division}{tk.d != null ? ` - ${formatDistance(Math.round(tk.d / 100) * 100)}` : ''}
               </span>
             </span>
             {value === tk.name && <Icon name="check" size={20} stroke={2.6} />}
@@ -122,7 +122,7 @@ function RiverChooser(props) {
     d: r.d,
     search: `${r.name} ${r.stations.map((st) => st.name).join(' ')}`,
     detail: r.gauge
-      ? `${t('nearestGauge')}: ${r.gauge} · ${km(r.d)}`
+      ? `${t('nearestGauge')}: ${r.gauge} - ${km(r.d)}`
       : `${r.stations.length} ${t(r.stations.length === 1 ? 'gauge' : 'gauges')}`,
   })), [rivers.data, pin, t]);
   return <ApiSourceChooser {...props} data={rivers} items={items}
@@ -140,7 +140,7 @@ function CanalChooser(props) {
     detail: [
       c.start && c.end ? `${t('waterIssue')} ${fmtDay(c.start, lang, DATE)} – ${fmtDay(c.end, lang, DATE)}` : null,
       c.d != null ? `${km(c.d)} ${t('fromTank')}` : null,
-    ].filter(Boolean).join(' · '),
+    ].filter(Boolean).join(' - '),
   })), [canals.data, pin, t, lang]);
   return <ApiSourceChooser {...props} data={canals} items={items}
     keys={{ search: 'searchCanal', loading: 'loadingCanals', offline: 'canalsOffline', nearest: 'nearestCanals', noMatch: 'noCanalMatch', which: 'which_canal' }} />;
@@ -151,7 +151,7 @@ const DATE = { day: 'numeric', month: 'short' };
 export function waterLabel(water, t) {
   if (!water?.source) return null;
   const src = WATER_SOURCES.find((s) => s.id === water.source);
-  return water.name ? `${t(src.key)} · ${water.name}` : t(src.key);
+  return water.name ? `${t(src.key)} - ${water.name}` : t(src.key);
 }
 
 // The farm pin's nearest tank, if it is one we list.
@@ -179,7 +179,7 @@ export default function RegWater() {
     <div className="screen">
       <StepHeader step={2.5} backTo="/register/pin" />
       <div>
-        <div className="eyebrow">{t('step')} 2c · {t('waterStep')}</div>
+        <div className="eyebrow">{t('step')} 2c - {t('waterStep')}</div>
         <h1 className="h1 sm">{t('waterTitle')}</h1>
       </div>
 

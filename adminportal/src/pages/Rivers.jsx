@@ -10,14 +10,16 @@ import {
   MapPin,
   MessageSquareText,
   Radio,
+  Search,
   Send,
   ShieldAlert,
   Signal,
   Waves,
+  X,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../context/ToastContext'
-import { cn, downloadCsv, formatDateTime } from '../utils/format'
+import { cn, csvTime, downloadCsv, formatDateTime } from '../utils/format'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Card, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -25,8 +27,8 @@ import { Badge, StatusBadge } from '../components/ui/Badge'
 import { Gauge } from '../components/ui/Gauge'
 import { Progress } from '../components/ui/Progress'
 import { Sparkline } from '../components/ui/Sparkline'
-import { Modal } from '../components/ui/Overlay'
 import { RiverHydrograph } from '../components/charts'
+import { AutoFloodAlerts } from '../components/AutoFloodAlerts'
 
 const TONE_HEX = {
   critical: '#dc2626',
@@ -35,7 +37,22 @@ const TONE_HEX = {
   success: '#16a34a',
 }
 
-const severityRank = { major: 0, warning: 1, watch: 2, normal: 3 }
+const severityRank = { major: 0, warning: 1, watch: 2, normal: 3, unset: 4 }
+// most serious first, then closest to its major flood level
+const bySeverity = (a, b) => {
+  const rank = severityRank[a.status] - severityRank[b.status]
+  return rank !== 0 ? rank : b.percentOfMajor - a.percentOfMajor
+}
+
+// A threshold or headroom in metres, or "—" when the gauge has none
+const metres = (value, digits = 2) => (value === null || value === undefined ? '—' : `${value.toFixed(digits)} m`)
+// Change in level: "+0.12 m", "0.00 m" when steady, "—" when there is nothing to compare with
+const signed = (value) => (value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(2)} m`)
+const changeClass = (value) => (value > 0 ? 'is-rising' : value < 0 ? 'is-falling' : '')
+const rain = (value) => (value === null ? '—' : `${value} mm`)
+// Distance to the major flood level, or how far above it the river is
+const toMajor = (value) => (value === null ? '—' : value >= 0 ? `${value.toFixed(2)} m below` : `${(-value).toFixed(2)} m above`)
+const TREND_LABEL = { rising: 'Rising', falling: 'Falling', steady: 'Steady' }
 
 export function Rivers() {
   const navigate = useNavigate()
@@ -46,7 +63,8 @@ export function Rivers() {
     searchParams.get('station') || FLOOD_ALERTS[0]?.id || RIVER_STATIONS[0]?.id
   const [selectedId, setSelectedId] = useState(initialStation)
   const [tableFilter, setTableFilter] = useState('all')
-  const [protocolOpen, setProtocolOpen] = useState(false)
+  const [river, setRiver] = useState(searchParams.get('river') || 'all')
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     const fromUrl = searchParams.get('station')
@@ -65,14 +83,41 @@ export function Rivers() {
     setSearchParams(params, { replace: true })
   }
 
+  // rivers with how many gauges each, for the dropdown
+  const rivers = useMemo(() => {
+    const counts = {}
+    for (const station of RIVER_STATIONS) counts[station.river] = (counts[station.river] || 0) + 1
+    return Object.entries(counts).sort(([a], [b]) => a.localeCompare(b))
+  }, [RIVER_STATIONS])
+
+  // gauges matching the river dropdown and the search box (station or river name)
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return (station) =>
+      (river === 'all' || station.river === river) &&
+      (!q || station.name.toLowerCase().includes(q) || station.river.toLowerCase().includes(q))
+  }, [river, query])
+  const shownStations = useMemo(() => RIVER_STATIONS.filter(matches), [RIVER_STATIONS, matches])
+
+  const chooseRiver = (value) => {
+    setRiver(value)
+    const params = new URLSearchParams(searchParams)
+    if (value === 'all') params.delete('river')
+    else params.set('river', value)
+    // open the river's most serious gauge
+    const first = value === 'all' ? null : RIVER_STATIONS.filter((station) => station.river === value).sort(bySeverity)[0]
+    if (first) {
+      setSelectedId(first.id)
+      params.set('station', first.id)
+    }
+    setSearchParams(params, { replace: true })
+  }
+
   const tableStations = useMemo(() => {
     const list =
-      tableFilter === 'alerts' ? RIVER_STATIONS.filter((station) => station.status !== 'normal') : RIVER_STATIONS
-    return [...list].sort((a, b) => {
-      const rank = severityRank[a.status] - severityRank[b.status]
-      return rank !== 0 ? rank : b.percentOfMajor - a.percentOfMajor
-    })
-  }, [tableFilter, RIVER_STATIONS])
+      tableFilter === 'alerts' ? FLOOD_ALERTS : RIVER_STATIONS
+    return list.filter(matches).sort(bySeverity)
+  }, [tableFilter, RIVER_STATIONS, FLOOD_ALERTS, matches])
 
   if (!selected) {
     return (
@@ -91,9 +136,9 @@ export function Rivers() {
       tone: 'primary',
     },
     {
-      label: 'Above alert level',
+      label: 'At or above alert level',
       value: FLOOD_ALERTS.length,
-      hint: `${RIVER_SUMMARY.warning} minor flood · ${RIVER_SUMMARY.major} major flood`,
+      hint: `${RIVER_SUMMARY.warning} minor flood - ${RIVER_SUMMARY.major} major flood`,
       icon: AlertTriangle,
       tone: 'critical',
     },
@@ -105,55 +150,58 @@ export function Rivers() {
       tone: 'teal',
     },
     {
-      label: 'Highest rainfall · 24 h',
+      label: 'Most rain - last 24 h',
       value: TOP_RAINFALL?.rainfall != null ? `${TOP_RAINFALL.rainfall.toFixed(1)} mm` : '—',
-      hint: TOP_RAINFALL ? `${TOP_RAINFALL.station} · ${TOP_RAINFALL.river}` : 'No rainfall reading',
+      hint: TOP_RAINFALL ? `${TOP_RAINFALL.station} - ${TOP_RAINFALL.river} - last report ${formatDateTime(TOP_RAINFALL.at)}` : 'No rain reported in the last 24 hours',
       icon: CloudRain,
       tone: 'info',
     },
   ]
 
+  // Worst gauges first, in the same order as the flood alerts, then by river and station
   const handleExport = () => {
-    downloadCsv(
-      `YalaMaha-river-gauges-${new Date().toLocaleDateString('en-CA')}.csv`,
-      RIVER_STATIONS.map((station) => ({
+    const rows = [...RIVER_STATIONS]
+      .sort((a, b) => severityRank[a.status] - severityRank[b.status] || b.percentOfMajor - a.percentOfMajor)
+      .map((station) => ({
         Station: station.name,
         River: station.river,
-        'Level (m)': station.level,
-        'Alert level (m)': station.warning,
-        'Minor flood level (m)': station.minor,
-        'Major flood level (m)': station.major,
-        'Change (m/3h)': station.change,
-        'Rainfall (mm)': station.rainfall,
         Status: station.statusMeta.label,
-        'Reading at': station.readingAt ? station.readingAt.toISOString() : '',
-      })),
-    )
-    toast('River gauge report downloaded.', { title: 'Export complete', tone: 'success' })
+        'Level (m)': station.level ?? '',
+        'Alert level (m)': station.warning ?? '',
+        'Minor flood level (m)': station.minor ?? '',
+        'Major flood level (m)': station.major ?? '',
+        'To major flood (m, negative = above)': station.thresholdHeadroom ?? '',
+        'Change in 3 h (m)': station.change ?? '',
+        'Trend over 24 h': TREND_LABEL[station.trend] ?? '',
+        'Rain in last 24 h (mm)': station.rainfall ?? '',
+        'Reading at': csvTime(station.readingAt),
+        Latitude: station.latitude ?? '',
+        Longitude: station.longitude ?? '',
+      }))
+    downloadCsv(`YalaMaha-river-gauges-${new Date().toLocaleDateString('en-CA')}.csv`, rows)
+    toast(`${rows.length} gauges exported.`, { title: 'Export complete', tone: 'success' })
   }
 
   const sendAdvisory = (station = selected) => {
     navigate(`/sms?template=flood&station=${station.id}`)
   }
 
-  const selectedHistory = selected.history.map((point) => point.level)
-  const lastChange = selected.change
-  const trendUp = lastChange >= 0
+  const selectedHistory = selected.history.map((point) => point.level).filter((level) => level !== null)
 
   return (
     <div className="page rivers-page">
       <PageHeader
-        eyebrow={`Hydrology · Latest reading ${formatDateTime(RIVER_SUMMARY.updatedAt)}`}
+        eyebrow={`Hydrology - Latest reading ${formatDateTime(RIVER_SUMMARY.updatedAt)}`}
         badge={
           <Badge tone={FLOOD_ALERTS.length ? 'warning' : 'success'} dot>
-            {FLOOD_ALERTS.length} above alert level
+            {FLOOD_ALERTS.length} at or above alert level
           </Badge>
         }
         title="River monitoring & flood watch"
         description={`Water levels against the alert, minor flood and major flood levels at ${RIVER_SUMMARY.total} river gauges.`}
         actions={
           <>
-            <Button icon={Download} variant="secondary" onClick={handleExport}>
+            <Button icon={Download} variant="secondary" onClick={handleExport} disabled={!RIVER_STATIONS.length}>
               Export gauge report
             </Button>
             <Button icon={Send} variant="primary" onClick={() => sendAdvisory()}>
@@ -163,6 +211,8 @@ export function Rivers() {
         }
       />
 
+      <AutoFloodAlerts />
+
       {FLOOD_ALERTS.length > 0 && (
         <div className="flood-banner">
           <span className="flood-banner-icon">
@@ -170,18 +220,15 @@ export function Rivers() {
           </span>
           <div className="flood-banner-copy">
             <strong>
-              {FLOOD_ALERTS[0].statusMeta.label} · {FLOOD_ALERTS[0].river} at {FLOOD_ALERTS[0].name}
+              {FLOOD_ALERTS[0].statusMeta.label} - {FLOOD_ALERTS[0].river} at {FLOOD_ALERTS[0].name}
             </strong>
             <span>
-              {FLOOD_ALERTS[0].level.toFixed(2)} m (alert {FLOOD_ALERTS[0].warning.toFixed(1)} m, minor flood{' '}
+              {metres(FLOOD_ALERTS[0].level)} (alert {FLOOD_ALERTS[0].warning.toFixed(1)} m, minor flood{' '}
               {FLOOD_ALERTS[0].minor.toFixed(1)} m, major flood {FLOOD_ALERTS[0].major.toFixed(1)} m).{' '}
-              {FLOOD_ALERTS.length} gauge{FLOOD_ALERTS.length > 1 ? 's are' : ' is'} above the alert level.
+              {FLOOD_ALERTS.length} gauge{FLOOD_ALERTS.length > 1 ? 's are' : ' is'} at or above the alert level.
             </span>
           </div>
           <div className="flood-banner-actions">
-            <Button variant="ghost" size="sm" onClick={() => setProtocolOpen(true)}>
-              View protocol
-            </Button>
             <Button
               variant="primary"
               size="sm"
@@ -218,12 +265,44 @@ export function Rivers() {
             <strong>Gauge network</strong>
             <span>Select a station to load its hydrograph</span>
           </div>
-          <Badge tone="success" dot>
-            {RIVER_SUMMARY.reporting} of {RIVER_SUMMARY.total} reporting
-          </Badge>
+          <div className="station-filters">
+            <label className="search-field">
+              <Search size={15} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search a river or gauge…"
+                aria-label="Search rivers and gauges"
+              />
+              {query && (
+                <button type="button" onClick={() => setQuery('')} aria-label="Clear search">
+                  <X size={13} />
+                </button>
+              )}
+            </label>
+            <label className="select-field">
+              <span>River</span>
+              <select value={river} onChange={(event) => chooseRiver(event.target.value)} aria-label="Choose a river">
+                <option value="all">All rivers ({RIVER_STATIONS.length} gauges)</option>
+                {rivers.map(([name, count]) => (
+                  <option key={name} value={name}>
+                    {name} ({count} gauge{count === 1 ? '' : 's'})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Badge tone="success" dot>
+              {RIVER_SUMMARY.reporting} of {RIVER_SUMMARY.total} reporting
+            </Badge>
+          </div>
         </div>
+        {shownStations.length === 0 && (
+          <div className="station-empty">
+            No river or gauge matches “{query}”{river !== 'all' ? ` on ${river}` : ''}.
+          </div>
+        )}
         <div className="station-strip">
-          {RIVER_STATIONS.map((station) => (
+          {shownStations.map((station) => (
             <button
               type="button"
               key={station.id}
@@ -244,10 +323,9 @@ export function Rivers() {
               <strong>{station.name}</strong>
               <span className="station-river">{station.statusMeta.label}</span>
               <span className="station-reading">
-                <strong>{station.level.toFixed(2)} m</strong>
-                <small className={station.change >= 0 ? 'is-rising' : 'is-falling'}>
-                  {station.change >= 0 ? '+' : ''}
-                  {station.change.toFixed(2)}
+                <strong>{metres(station.level)}</strong>
+                <small className={changeClass(station.change)} title="Change in the last 3 hours">
+                  {signed(station.change)}
                 </small>
               </span>
             </button>
@@ -259,34 +337,34 @@ export function Rivers() {
         <Card className="span-8 chart-card river-chart-card">
           <CardHeader
             icon={Waves}
-            title={`${selected.name} · ${selected.river}`}
+            title={`${selected.name} - ${selected.river}`}
             subtitle={`Water level over the 24 hours to ${formatDateTime(selected.readingAt)}`}
             action={<StatusBadge meta={selected.statusMeta} />}
           />
           <div className="hydro-metrics">
             <div>
               <span>Current level</span>
-              <strong>{selected.level.toFixed(2)} m</strong>
-              <small className={trendUp ? 'is-rising' : 'is-falling'}>
-                {trendUp ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-                {selected.change >= 0 ? '+' : ''}
-                {selected.change.toFixed(2)} m / 3h
+              <strong>{metres(selected.level)}</strong>
+              <small className={changeClass(selected.change)}>
+                {selected.change > 0 && <ArrowUpRight size={13} />}
+                {selected.change < 0 && <ArrowDownRight size={13} />}
+                {signed(selected.change)} in 3 h
               </small>
             </div>
             <div>
               <span>Alert level</span>
-              <strong>{selected.warning.toFixed(2)} m</strong>
-              <small>Minor flood {selected.minor.toFixed(2)} m</small>
+              <strong>{metres(selected.warning)}</strong>
+              <small>Minor flood {metres(selected.minor)}</small>
             </div>
             <div>
               <span>Major flood</span>
-              <strong>{selected.major.toFixed(2)} m</strong>
-              <small>{selected.thresholdHeadroom.toFixed(2)} m headroom</small>
+              <strong>{metres(selected.major)}</strong>
+              <small>{toMajor(selected.thresholdHeadroom)}</small>
             </div>
             <div>
-              <span>Rainfall</span>
-              <strong>{selected.rainfall} mm</strong>
-              <small>Measured at the gauge</small>
+              <span>Rain - last 24 h</span>
+              <strong>{rain(selected.rainfall)}</strong>
+              <small>Total of the gauge's reports</small>
             </div>
           </div>
           <div className="chart-box" style={{ height: 286 }}>
@@ -299,9 +377,15 @@ export function Rivers() {
           <div className="chart-caption">
             <span>
               <i style={{ background: TONE_HEX[selected.statusMeta.tone] }} />
-              {selected.river} · {selected.history.length} readings
+              {selected.river} - {selectedHistory.length} level readings
             </span>
-            <span>Dashed lines: alert and major flood levels</span>
+            <span>
+              {selected.level === null
+                ? 'This gauge reports rain only, no water level'
+                : selected.warning === null
+                  ? 'This gauge has no flood levels'
+                  : 'Dashed lines: alert and major flood levels'}
+            </span>
           </div>
         </Card>
 
@@ -319,7 +403,7 @@ export function Rivers() {
             <div className="snapshot-gauge">
               <Gauge
                 value={selected.percentOfMajor}
-                label="of major flood level"
+                label="of the major flood level"
                 tone={TONE_HEX[selected.statusMeta.tone]}
                 size="md"
               />
@@ -331,26 +415,26 @@ export function Rivers() {
             <div className="snapshot-stats">
               <div>
                 <span>Water level</span>
-                <strong>{selected.level.toFixed(2)} m</strong>
+                <strong>{metres(selected.level)}</strong>
               </div>
               <div>
                 <span>Minor flood level</span>
-                <strong>{selected.minor.toFixed(2)} m</strong>
+                <strong>{metres(selected.minor)}</strong>
               </div>
               <div>
-                <span>Below major flood</span>
-                <strong>{selected.thresholdHeadroom.toFixed(2)} m</strong>
+                <span>Major flood level</span>
+                <strong>{toMajor(selected.thresholdHeadroom)}</strong>
               </div>
               <div>
-                <span>Rainfall</span>
-                <strong>{selected.rainfall} mm</strong>
+                <span>Rain - last 24 h</span>
+                <strong>{rain(selected.rainfall)}</strong>
               </div>
             </div>
             <div className="snapshot-spark">
               <div className="snapshot-spark-head">
                 <span>24-hour trend</span>
-                <strong className={trendUp ? 'is-rising' : 'is-falling'}>
-                  {trendUp ? 'Rising' : 'Falling'}
+                <strong className={selected.trend === 'rising' ? 'is-rising' : selected.trend === 'falling' ? 'is-falling' : ''}>
+                  {TREND_LABEL[selected.trend] || 'Not enough readings'}
                 </strong>
               </div>
               <Sparkline
@@ -369,14 +453,6 @@ export function Rivers() {
               onClick={() => sendAdvisory(selected)}
             >
               Send advisory
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={ShieldAlert}
-              onClick={() => setProtocolOpen(true)}
-            >
-              Flood protocol
             </Button>
           </div>
         </Card>
@@ -401,7 +477,7 @@ export function Rivers() {
                 className={tableFilter === 'alerts' ? 'active' : ''}
                 onClick={() => setTableFilter('alerts')}
               >
-                Above alert level
+                At or above alert level
               </button>
             </div>
           }
@@ -416,9 +492,9 @@ export function Rivers() {
                 <th>Alert</th>
                 <th>Minor flood</th>
                 <th>Major flood</th>
-                <th>Below major</th>
-                <th>Rainfall</th>
-                <th>Trend</th>
+                <th>To major flood</th>
+                <th>Rain - 24 h</th>
+                <th>Change - 3 h</th>
                 <th>Status</th>
                 <th aria-label="Actions" />
               </tr>
@@ -443,11 +519,11 @@ export function Rivers() {
                   </td>
                   <td className="muted-cell">{station.river}</td>
                   <td>
-                    <span className="level-value">{station.level.toFixed(2)} m</span>
+                    <span className="level-value">{metres(station.level)}</span>
                   </td>
-                  <td className="muted-cell">{station.warning.toFixed(1)} m</td>
-                  <td className="muted-cell">{station.minor.toFixed(1)} m</td>
-                  <td className="muted-cell">{station.major.toFixed(1)} m</td>
+                  <td className="muted-cell">{metres(station.warning, 1)}</td>
+                  <td className="muted-cell">{metres(station.minor, 1)}</td>
+                  <td className="muted-cell">{metres(station.major, 1)}</td>
                   <td>
                     <div className="headroom-cell">
                       <Progress
@@ -455,19 +531,15 @@ export function Rivers() {
                         tone={station.statusMeta.tone}
                         size="xs"
                       />
-                      <small>{station.thresholdHeadroom.toFixed(2)} m</small>
+                      <small>{toMajor(station.thresholdHeadroom)}</small>
                     </div>
                   </td>
-                  <td className="numeric-cell">{station.rainfall} mm</td>
+                  <td className="numeric-cell">{rain(station.rainfall)}</td>
                   <td>
-                    <span className={cn('trend-cell', station.change >= 0 ? 'is-rising' : 'is-falling')}>
-                      {station.change >= 0 ? (
-                        <ArrowUpRight size={14} />
-                      ) : (
-                        <ArrowDownRight size={14} />
-                      )}
-                      {station.change >= 0 ? '+' : ''}
-                      {station.change.toFixed(2)} m
+                    <span className={cn('trend-cell', changeClass(station.change))}>
+                      {station.change > 0 && <ArrowUpRight size={14} />}
+                      {station.change < 0 && <ArrowDownRight size={14} />}
+                      {signed(station.change)}
                     </span>
                   </td>
                   <td>
@@ -489,55 +561,6 @@ export function Rivers() {
         </div>
       </Card>
 
-      <Modal
-        open={protocolOpen}
-        onClose={() => setProtocolOpen(false)}
-        title="Flood response protocol"
-        description="Standard operating procedure for gauges above the alert level."
-        icon={ShieldAlert}
-        size="lg"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setProtocolOpen(false)}>
-              Close
-            </Button>
-            <Button variant="primary" icon={Send} onClick={() => sendAdvisory(FLOOD_ALERTS[0] || selected)}>
-              Send farmer advisory
-            </Button>
-          </>
-        }
-      >
-        <ol className="protocol-list">
-          <li>
-            <span>01</span>
-            <div>
-              <strong>Verify the reading</strong>
-              <p>Cross-check the telemetry value with the manual gauge and confirm the timestamp.</p>
-            </div>
-          </li>
-          <li>
-            <span>02</span>
-            <div>
-              <strong>Notify the district disaster unit</strong>
-              <p>Share the station code, level, trend and threshold breach with the DMC duty officer.</p>
-            </div>
-          </li>
-          <li>
-            <span>03</span>
-            <div>
-              <strong>Issue the SMS advisory</strong>
-              <p>Target farmers in the downstream GN divisions and advise evacuation of low-lying fields.</p>
-            </div>
-          </li>
-          <li>
-            <span>04</span>
-            <div>
-              <strong>Monitor every 15 minutes</strong>
-              <p>Escalate to major flood response if the level continues to rise above the major threshold.</p>
-            </div>
-          </li>
-        </ol>
-      </Modal>
     </div>
   )
 }

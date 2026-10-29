@@ -7,7 +7,9 @@ import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <HashRouter>
+    {/* No v7_startTransition: pages update state and then navigate (sign-in, registration), and their
+        own guards would redirect first if navigation were deferred. */}
+    <HashRouter future={{ v7_relativeSplatPath: true }}>
       <AppProvider>
         <App />
       </AppProvider>

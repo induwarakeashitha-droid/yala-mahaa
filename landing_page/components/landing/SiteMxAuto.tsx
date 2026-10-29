@@ -10,7 +10,7 @@ export default function SiteMxAuto({ t }: { t: Dict }) {
         <Languages className="size-3.5 text-primary-1" />
         <p className="text-sm site-text-default-500 font-medium">
           {" "}
-          <span className="text-black font-medium">සිංහල · தமிழ் · English</span>
+          <span className="text-black font-medium">සිංහල - தமிழ் - English</span>
           {` ${t.intro.platforms} `}
         </p>
       </div>

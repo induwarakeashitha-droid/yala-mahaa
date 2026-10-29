@@ -109,7 +109,7 @@ function RowEditor({ table, row, canWrite, onClose, onSaved }) {
     <Modal
       open
       onClose={() => !saving && onClose()}
-      title={row ? `${table.name} · ${key ? row[key] : 'row'}` : `New row in ${table.name}`}
+      title={row ? `${table.name} - ${key ? row[key] : 'row'}` : `New row in ${table.name}`}
       description={
         !editable
           ? 'View only'
@@ -166,7 +166,7 @@ function RowEditor({ table, row, canWrite, onClose, onSaved }) {
                   {column.name}
                   <small className="db-type">
                     {column.type}
-                    {table.primaryKey.includes(column.name) ? ' · key' : ''}
+                    {table.primaryKey.includes(column.name) ? ' - key' : ''}
                   </small>
                 </span>
                 <input
@@ -309,8 +309,8 @@ export function Database() {
             title={tableName || 'Choose a table'}
             subtitle={
               table
-                ? `${table.columns.length} columns · key ${table.primaryKey.join(', ') || 'none'}${
-                    table.editable ? '' : ' · super administrators only'
+                ? `${table.columns.length} columns - key ${table.primaryKey.join(', ') || 'none'}${
+                    table.editable ? '' : ' - super administrators only'
                   }`
                 : ''
             }

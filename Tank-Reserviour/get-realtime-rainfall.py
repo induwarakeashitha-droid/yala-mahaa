@@ -93,7 +93,7 @@ def query_arcgis(url, params):
     query = urllib.parse.urlencode({"f": "json", **params})
     request = urllib.request.Request(
         f"{url}?{query}",
-        headers={"User-Agent": "Yala-Maha rainfall data fetcher"},
+        headers={"User-Agent": "YalaMaha rainfall data fetcher"},
     )
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:

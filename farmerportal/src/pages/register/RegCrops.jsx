@@ -88,8 +88,8 @@ function CropSummary({ crop, index, onEdit, t }) {
     <div className="card row-card static">
       <div className="icon-tile" style={{ background: `${cat.color}22` }}><Icon name={crop.category === 'paddy' ? 'leaf' : 'chilli'} size={22} color={cat.color} /></div>
       <div className="grow min0">
-        <div className="f15 fw600 ellipsis">{t('crop')} {index + 1} · {crop.type}</div>
-        <div className="f13 muted ellipsis">{cat.short || cat.label} · {crop.variety.split(' (')[0]} · {crop.acres} ac{crop.yield ? ` · ${crop.yield} ${crop.unit}/ac` : ''}</div>
+        <div className="f15 fw600 ellipsis">{t('crop')} {index + 1} - {crop.type}</div>
+        <div className="f13 muted ellipsis">{cat.short || cat.label} - {crop.variety.split(' (')[0]} - {crop.acres} ac{crop.yield ? ` - ${crop.yield} ${crop.unit}/ac` : ''}</div>
       </div>
       <button type="button" className="icon-btn soft" style={{ width: 44, height: 44 }} aria-label={`Edit crop ${index + 1}`} onClick={onEdit}><Icon name="pencil" size={18} /></button>
     </div>
@@ -114,7 +114,7 @@ export default function RegCrops() {
     <div className="screen">
       <StepHeader step={1.5} backTo="/register/identity" right={<span className="chip-dark">2 / 4</span>} />
       <div>
-        <div className="eyebrow">{t('step')} 2a · {t('crops')}</div>
+        <div className="eyebrow">{t('step')} 2a - {t('crops')}</div>
         <h1 className="h1">{t('whatGrow')}</h1>
       </div>
 

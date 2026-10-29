@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   ArrowDown,
   ArrowUp,
+  ClipboardList,
   CornerDownLeft,
   Database,
   Droplets,
@@ -13,7 +14,6 @@ import {
   Settings,
   Users,
   Waves,
-  Wrench,
   X,
 } from 'lucide-react'
 import { cn } from '../../utils/format'
@@ -25,11 +25,12 @@ const PAGES = [
   { id: 'page-dashboard', label: 'Dashboard', hint: 'Storage, alerts and farmers', to: '/', icon: LayoutDashboard, type: 'Page' },
   { id: 'page-tanks', label: 'Tank & Reservoir', hint: 'Storage, spillways and field readings', to: '/tanks', icon: Droplets, type: 'Page' },
   { id: 'page-rivers', label: 'River Monitoring', hint: 'Gauges and flood thresholds', to: '/rivers', icon: Waves, type: 'Page' },
+  { id: 'page-reports', label: 'Canal Reports', hint: 'Canal problems reported by farmers', to: '/reports', icon: ClipboardList, type: 'Page' },
   { id: 'page-sms', label: 'SMS Gateway', hint: 'Campaigns and delivery reports', to: '/sms', icon: MessageSquareText, type: 'Page' },
   { id: 'page-farmers', label: 'Farmer Portal', hint: 'Registry and water issue schedule', to: '/farmers', icon: Users, type: 'Page' },
-  { id: 'page-reports', label: 'Canal Reports', hint: 'Blocked channels, leaks and broken gates from farmers', to: '/reports', icon: Wrench, type: 'Page' },
   { id: 'page-database', label: 'Database', hint: 'Browse and edit every table', to: '/database', icon: Database, type: 'Page' },
-  { id: 'page-settings', label: 'Settings', hint: 'Workspace preferences and notifications', to: '/settings', icon: Settings, type: 'Page' },
+  { id: 'page-settings', label: 'My account', hint: 'Your account and password', to: '/settings/account', icon: Settings, type: 'Page' },
+  { id: 'page-preferences', label: 'Preferences', hint: 'Light or dark theme', to: '/settings/preferences', icon: Settings, type: 'Page' },
 ]
 
 export function CommandPalette({ open, onClose }) {
@@ -93,7 +94,7 @@ export function CommandPalette({ open, onClose }) {
       .map((tank) => ({
         id: tank.id,
         label: tank.name,
-        hint: `${tank.district} · ${tank.percent.toFixed(1)}% storage`,
+        hint: `${tank.district} - ${tank.percent.toFixed(1)}% storage`,
         to: `/tanks?q=${encodeURIComponent(tank.name)}`,
         icon: Droplets,
         type: 'Reservoir',
@@ -105,8 +106,8 @@ export function CommandPalette({ open, onClose }) {
       .slice(0, 4)
       .map((station) => ({
         id: station.id,
-        label: `${station.name} · ${station.river}`,
-        hint: `${station.level.toFixed(2)} m · ${station.statusMeta.label}`,
+        label: `${station.name} - ${station.river}`,
+        hint: `${station.level === null ? 'No level reading' : `${station.level.toFixed(2)} m`} - ${station.statusMeta.label}`,
         to: `/rivers?station=${station.id}`,
         icon: Waves,
         type: 'River gauge',
@@ -116,7 +117,7 @@ export function CommandPalette({ open, onClose }) {
       ? farmerResults.map((farmer) => ({
           id: farmer.id,
           label: farmer.name,
-          hint: `${farmer.district} · ${farmer.crop} · ${farmer.farm_id}`,
+          hint: `${farmer.district} - ${farmer.crop} - ${farmer.farm_id}`,
           to: `/farmers?q=${encodeURIComponent(farmer.farm_id)}`,
           icon: Users,
           type: 'Farmer',

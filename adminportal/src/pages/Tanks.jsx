@@ -47,7 +47,7 @@ const STATUS_FILTERS = [
   { value: 'all', label: 'All statuses' },
   { value: 'critical', label: 'Critical (<10%)' },
   { value: 'low', label: 'Low (10–25%)' },
-  { value: 'watch', label: 'Watch (25–50%)' },
+  { value: 'watch', label: 'Moderate (25–50%)' },
   { value: 'healthy', label: 'Healthy (50%+)' },
   { value: 'spilling', label: 'Spilling now' },
 ]
@@ -194,7 +194,7 @@ function TankMap({ tanks: allTanks, atRisk, selected, onSelect, onHoverChange })
                       {tank.name.length > 20 ? `${tank.name.slice(0, 19)}…` : tank.name}
                     </text>
                     <text x="4" y="12" className="map-tooltip-sub">
-                      {tank.district} · {tank.percent.toFixed(1)}%
+                      {tank.district} - {tank.percent.toFixed(1)}%
                     </text>
                   </g>
                 )}
@@ -208,7 +208,7 @@ function TankMap({ tanks: allTanks, atRisk, selected, onSelect, onHoverChange })
         <div className="map-legend">
           {Object.entries({
             healthy: 'Healthy 50%+',
-            watch: 'Watch 25–50%',
+            watch: 'Moderate 25–50%',
             low: 'Low 10–25%',
             critical: 'Critical <10%',
           }).map(([key, label]) => (
@@ -228,7 +228,7 @@ function TankMap({ tanks: allTanks, atRisk, selected, onSelect, onHoverChange })
             <div>
               <strong>{focus.name}</strong>
               <span>
-                {focus.district} · {focus.division}
+                {focus.district} - {focus.division}
               </span>
             </div>
             <StatusBadge meta={focus.statusMeta} />
@@ -515,25 +515,27 @@ export function Tanks() {
   }
 
   const handleExport = () => {
-    downloadCsv(
-      `YalaMaha-reservoirs-${filtered.length}.csv`,
+    const ok = downloadCsv(
+      `YalaMaha-reservoirs-${new Date().toLocaleDateString('en-CA')}.csv`,
       filtered.map((tank) => ({
         ID: tank.id,
         Reservoir: tank.name,
         District: tank.district,
         Division: tank.division,
         Type: tank.type,
-        'Capacity (AFT)': tank.capacityAcft,
-        'Storage (AFT)': tank.storageAcft,
-        'Storage (%)': tank.percent,
-        'Water depth (ft)': tank.waterDepth,
-        'Full depth (ft)': tank.fullDepth,
+        // blank (not 0) when the reservoir has no figure
+        'Capacity (AFT)': tank.gross_capacity_acft == null ? '' : tank.capacityAcft,
+        'Storage (AFT)': tank.gross_storage_acft == null ? '' : tank.storageAcft,
+        'Storage (%)': tank.hasReading ? tank.percent : '',
+        'Water depth (ft)': tank.water_depth_ft == null ? '' : tank.waterDepth,
+        'Full depth (ft)': tank.full_depth_ft == null ? '' : tank.fullDepth,
         'Rainfall (mm)': tank.rainfall ?? '',
-        Spilling: tank.isSpilling ? 'Yes' : 'No',
+        Spilling: tank.hasReading ? (tank.isSpilling ? 'Yes' : 'No') : '',
         Status: tank.statusMeta.label,
-        'Reading date': tank.reading_date,
+        'Reading date': tank.reading_date ?? '',
       })),
     )
+    if (!ok) return toast('No reservoirs match the current filters.', { tone: 'error' })
     toast(`${filtered.length} reservoir records exported.`, { title: 'CSV ready', tone: 'success' })
   }
 
@@ -575,7 +577,7 @@ export function Tanks() {
     {
       label: 'Monitored reservoirs',
       value: TANK_SUMMARY.total,
-      hint: `${TANK_SUMMARY.major} major · ${TANK_SUMMARY.medium} medium · ${TANK_SUMMARY.reporting} reporting`,
+      hint: `${TANK_SUMMARY.major} major - ${TANK_SUMMARY.medium} medium - ${TANK_SUMMARY.reporting} reporting`,
       icon: Droplets,
       tone: 'primary',
     },
@@ -612,7 +614,7 @@ export function Tanks() {
   return (
     <div className="page tanks-page">
       <PageHeader
-        eyebrow={`Water resources · Latest readings ${formatDate(TANK_SUMMARY.latestReading)}`}
+        eyebrow={`Water resources - Latest readings ${formatDate(TANK_SUMMARY.latestReading)}`}
         badge={
           <Badge tone="info" dot>
             {TANK_SUMMARY.total} reservoirs
@@ -622,7 +624,7 @@ export function Tanks() {
         description={`Usable storage, spilling reservoirs and field readings for the ${TANK_SUMMARY.total} monitored reservoirs.`}
         actions={
           <>
-            <Button icon={Download} variant="secondary" onClick={handleExport}>
+            <Button icon={Download} variant="secondary" onClick={handleExport} disabled={!filtered.length}>
               Export CSV
             </Button>
             {canEdit && (
@@ -731,7 +733,7 @@ export function Tanks() {
         <div className="filter-meta">
           <span>
             Showing <strong>{filtered.length}</strong> of {tanks.length} reservoirs
-            {activeFilters > 0 && ` · ${activeFilters} filter${activeFilters > 1 ? 's' : ''} applied`}
+            {activeFilters > 0 && ` - ${activeFilters} filter${activeFilters > 1 ? 's' : ''} applied`}
           </span>
           <span className="filter-meta-right">
             <span className="status-dot" />
@@ -772,6 +774,7 @@ export function Tanks() {
                   <SortHeader label="Storage" field="percent" sort={sort} onSort={handleSort} />
                   <SortHeader label="Depth" field="waterDepth" sort={sort} onSort={handleSort} />
                   <th>Rainfall</th>
+                  <SortHeader label="Reading" field="reading_date" sort={sort} onSort={handleSort} />
                   <th>Status</th>
                   <th aria-label="Actions" />
                 </tr>
@@ -790,7 +793,7 @@ export function Tanks() {
                             {tank.isSpilling && <span className="spill-tag">Spilling</span>}
                           </strong>
                           <small>
-                            {tank.id} · {tank.division}
+                            {tank.id} - {tank.division}
                           </small>
                         </div>
                       </div>
@@ -815,6 +818,15 @@ export function Tanks() {
                       {tank.waterDepth.toFixed(1)} / {tank.fullDepth.toFixed(0)} ft
                     </td>
                     <td className="muted-cell">{tank.rainfall === null ? '—' : `${tank.rainfall} mm`}</td>
+                    <td>
+                      {tank.stale ? (
+                        <Badge tone="warning" title={`No newer reading in ${tank.readingAge} days`}>
+                          {tank.reading_date ? formatDate(tank.reading_date, { year: undefined }) : 'No reading'}
+                        </Badge>
+                      ) : (
+                        <span className="muted-cell">{formatDate(tank.reading_date, { year: undefined })}</span>
+                      )}
+                    </td>
                     <td>
                       <StatusBadge meta={tank.statusMeta} />
                     </td>
@@ -891,7 +903,7 @@ export function Tanks() {
         title={selected?.name || 'Reservoir'}
         description={
           selected
-            ? `${selected.district} district · ${selected.division} division · ${selected.id}`
+            ? `${selected.district} district - ${selected.division} division - ${selected.id}`
             : ''
         }
         icon={Droplets}
@@ -934,7 +946,7 @@ export function Tanks() {
                   </Badge>
                   {selected.isSpilling && (
                     <Badge tone="warning" dot>
-                      Spilling · {selected.spillRate} cusec
+                      Spilling - {selected.spillRate} cusec
                     </Badge>
                   )}
                 </div>
@@ -973,7 +985,7 @@ export function Tanks() {
               </div>
               <div className="detail-stat">
                 <span className="detail-stat-icon"><Droplets size={15} /></span>
-                <span>Rainfall · previous day</span>
+                <span>Rainfall - previous day</span>
                 <strong>{selected.rainfall === null ? '—' : `${selected.rainfall} mm`}</strong>
                 <small>Measured at the reservoir</small>
               </div>
@@ -995,7 +1007,7 @@ export function Tanks() {
               <div className="detail-section-head">
                 <div>
                   <strong>Storage trajectory</strong>
-                  <span>Readings of the last 30 days · % usable storage</span>
+                  <span>Readings of the last 30 days - % usable storage</span>
                 </div>
                 {selectedTrend && (
                   <Badge tone={selectedTrend.change >= 0 ? 'success' : 'warning'}>
@@ -1015,7 +1027,7 @@ export function Tanks() {
                   />
                   <div className="detail-chart-axis">
                     <span>{formatDate(selectedTrend.points[0].date, { year: undefined })}</span>
-                    <span>{formatDate(selectedTrend.points.at(-1).date, { year: undefined })} · {selected.percent.toFixed(1)}%</span>
+                    <span>{formatDate(selectedTrend.points.at(-1).date, { year: undefined })} - {selected.percent.toFixed(1)}%</span>
                   </div>
                 </div>
               ) : (
@@ -1091,7 +1103,7 @@ export function Tanks() {
             >
               {tanks.map((tank) => (
                 <option key={tank.id} value={tank.id}>
-                  {tank.name} · {tank.district}
+                  {tank.name} - {tank.district}
                 </option>
               ))}
             </select>
@@ -1120,7 +1132,7 @@ export function Tanks() {
             />
           </label>
           <label className="field">
-            <span>Rainfall · previous day (mm)</span>
+            <span>Rainfall - previous day (mm)</span>
             <input
               type="number"
               step="0.1"

@@ -86,8 +86,7 @@ async function sendSms(recipients, message, options = {}) {
 
   const data = await response.json()
 
-  // Text.lk reports some failures (unauthorized sender ID, no credit) as HTTP 200 with status "error"
-  if (!response.ok || data.status === 'error') {
+  if (!response.ok) {
        throw new Error(`Message API error (${response.status}): ${JSON.stringify(data)}`)
   }
 
@@ -106,13 +105,33 @@ async function sendRegistrationConfirmation(phone, { farmerName, acres }, option
   const normalized = phoneCheck.normalized
   const name = farmerName || 'Farmer'
   const totalAcres = acres ? `${acres} ac` : 'registered area'
-  const message = `YalaMaha: Welcome ${name}! Farm of land (${totalAcres}) acres is registered for irrigation schedules & flood alerts.`
+  const message = `Yala Maha: Welcome ${name}! Farm of land (${totalAcres}) acres is registered for irrigation schedules & flood alerts.`
 
   return await sendSms(normalized, message, options)
 }
 
+// read-only Text.lk calls: one message's delivery status, and the account balance
+async function textlkGet(path) {
+  const token = process.env.TEXTLK_API_TOKEN
+  if (!token) throw new Error('TEXTLK_API_TOKEN is not configured.')
+  const response = await fetch(`https://app.text.lk/api/v3${path}`, {
+    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || data.status === 'error') {
+    throw new Error(`Message API error (${response.status}): ${data.message || 'no details'}`)
+  }
+  return data.data
+}
+
+const getSmsStatus = (uid) => textlkGet(`/sms/${encodeURIComponent(uid)}`)
+const getBalance = () => textlkGet('/balance')
+
 module.exports = {
   sendSms,
+  getSmsStatus,
+  getBalance,
   normalizePhoneNumber,
   validateSriLankanMobile,
   sendRegistrationConfirmation

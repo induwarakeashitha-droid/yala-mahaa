@@ -1,5 +1,6 @@
-// Fixed lists the portal needs. Live data (tanks, rivers, rain, water release, reports) comes from
-// the API and Open-Meteo: see api/reservoirs.js, api/nearby.js and api/alerts.js.
+// Fixed lists and text for the app. Live data (tanks, forecasts, river gauges, water issue
+// schedule, rain) comes from the API and Open-Meteo: see src/api/.
+
 
 export const CROP_CATALOG = {
   paddy: {
@@ -53,7 +54,6 @@ export const ISSUE_TYPES = [
   { id: 'gate', key: 'gate', icon: 'gate' },
   { id: 'other', key: 'other', icon: 'dots' },
 ];
-
 
 // Real photos (Wikimedia Commons, credits in public/photos/CREDITS.md).
 const photo = (f) => `${import.meta.env.BASE_URL}photos/${f}`;

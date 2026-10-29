@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "YalaMaha — National Water & Irrigation Command Center",
+  "description": "Yala Maha — National Water & Irrigation Command Center",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

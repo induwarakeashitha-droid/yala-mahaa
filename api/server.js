@@ -7,6 +7,8 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') })
 
 const logger =require('./utils/logger.js')
 const app = require('./app.js')
+const { startReminderJob } = require('./services/reminderJob.js')
+const { startFloodAlertJob } = require('./services/floodAlertJob.js')
 
 const PORT = process.env.API_PORT || 8005
 
@@ -14,6 +16,8 @@ try{
     app.listen(PORT, () => {
         console.log(`API Started Successfully on port ${PORT}`)
         logger.info(`API Running on PORT ${PORT}`)
+        startReminderJob()
+        startFloodAlertJob()
     })
 
 } catch(error) {

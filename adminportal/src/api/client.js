@@ -69,6 +69,19 @@ export async function api(path, options = {}) {
   }
 }
 
+// For routes that send a file back (report photos): an object URL for an <img>
+export async function apiBlob(path) {
+  const load = () =>
+    fetch(`${BASE}${path}`, { credentials: 'include', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} })
+  let response = await load().catch(() => null)
+  if (response?.status === 401) {
+    await refresh()
+    response = await load().catch(() => null)
+  }
+  if (!response?.ok) throw new ApiError('Photo could not be loaded.', response?.status || 0)
+  return URL.createObjectURL(await response.blob())
+}
+
 export async function signIn(username, password) {
   const data = await send('/admin/auth/login', { method: 'POST', body: { username, password }, token: null })
   accessToken = data.accessToken

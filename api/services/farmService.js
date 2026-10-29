@@ -4,26 +4,26 @@ const WATER_SOURCES = ['tank', 'canal', 'river', 'well', 'rain']
 const YIELD_UNITS = ['kg', 'bu', 't']
 const MAX_CROPS = 20
 
-// Runs fn(client) inside BEGIN/COMMIT, rolling back if it throws
+// runs fn(client) in a transaction, rolls back if it throws
 async function withTransaction(fn) {
     const client = await db.pool.connect()
     try {
         await client.query('BEGIN')
-        const result = await fn(client)
+        const res = await fn(client)
         await client.query('COMMIT')
-        return result
-    } catch (error) {
+        return res
+    } catch (err) {
         await client.query('ROLLBACK').catch(() => {})
-        throw error
+        throw err
     } finally {
         client.release()
     }
 }
 
-const text = (value, max = 120) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null)
+const text = (val, max = 120) => (typeof val === 'string' && val.trim() ? val.trim().slice(0, max) : null)
 
-// Checks the farm part of a request body: { water_source, water_name, location_label, crops: [...] }.
-// Returns { error } or { farm } with the values cleaned up. crops stays undefined when it wasn't sent.
+// returns { error } or { farm }. crops stays undefined if it wasn't sent
+//whitelists water source / yield unit, caps crop count, number ranges and text length
 function validateFarm(body, { requireCrops = false } = {}) {
     const { water_source, water_name, location_label, crops } = body || {}
 
@@ -43,14 +43,14 @@ function validateFarm(body, { requireCrops = false } = {}) {
     const cleaned = []
     for (const [i, crop] of crops.entries()) {
         const n = i + 1
-        const cropType = text(crop?.crop_type, 80)
-        if (!cropType) return { error: `Crop ${n}: crop_type is required.` }
+        const type = text(crop?.crop_type, 80)
+        if (!type) return { error: `Crop ${n}: crop_type is required.` }
         const acres = Number(crop.acres)
         if (!Number.isFinite(acres) || acres <= 0 || acres > 100000) {
             return { error: `Crop ${n}: acres must be a number above 0.` }
         }
-        const lastYield = crop.last_yield == null || crop.last_yield === '' ? null : Number(crop.last_yield)
-        if (lastYield !== null && (!Number.isFinite(lastYield) || lastYield < 0)) {
+        const lastYld = crop.last_yield == null || crop.last_yield === '' ? null : Number(crop.last_yield)
+        if (lastYld !== null && (!Number.isFinite(lastYld) || lastYld < 0)) {
             return { error: `Crop ${n}: last_yield must be a number of 0 or more.` }
         }
         if (crop.yield_unit != null && !YIELD_UNITS.includes(crop.yield_unit)) {
@@ -58,10 +58,10 @@ function validateFarm(body, { requireCrops = false } = {}) {
         }
         cleaned.push({
             category: text(crop.category, 40),
-            crop_type: cropType,
+            crop_type: type,
             variety: text(crop.variety, 80),
             acres: Math.round(acres * 100) / 100,
-            last_yield: lastYield,
+            last_yield: lastYld,
             yield_unit: crop.yield_unit ?? null
         })
     }
@@ -71,16 +71,15 @@ function validateFarm(body, { requireCrops = false } = {}) {
     }
 }
 
-// Totals kept on the farmers row so older queries keep working
+// totals also kept on the farmers row so the old queries still work
 function cropSummary(crops) {
     return {
-        land_acres: Math.round(crops.reduce((sum, crop) => sum + crop.acres, 0) * 100) / 100,
+        land_acres: Math.round(crops.reduce((sum, c) => sum + c.acres, 0) * 100) / 100,
         primary_crop: crops[0].crop_type
     }
 }
 
-// Creates or replaces a farm's details. With farm.crops, the crop list is replaced as a whole
-// and the farmer's land_acres / primary_crop are updated to match.
+// insert/replace farm details. if farm.crops is there the whole crop list gets replaced
 async function saveFarm(client, farmId, farm) {
     await client.query(
         `INSERT INTO farms (farm_id, water_source, water_name, location_label)
@@ -94,18 +93,18 @@ async function saveFarm(client, farmId, farm) {
     if (!farm.crops) return
 
     await client.query('DELETE FROM farm_crops WHERE farm_id = $1', [farmId])
-    for (const [position, crop] of farm.crops.entries()) {
+    for (const [pos, crop] of farm.crops.entries()) {
         await client.query(
             `INSERT INTO farm_crops (farm_id, position, category, crop_type, variety, acres, last_yield, yield_unit)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [farmId, position, crop.category, crop.crop_type, crop.variety, crop.acres, crop.last_yield, crop.yield_unit]
+            [farmId, pos, crop.category, crop.crop_type, crop.variety, crop.acres, crop.last_yield, crop.yield_unit]
         )
     }
     const { land_acres, primary_crop } = cropSummary(farm.crops)
     await client.query('UPDATE farmers SET land_acres = $2, primary_crop = $3 WHERE farm_id = $1', [farmId, land_acres, primary_crop])
 }
 
-// A farm with its crops, or null if it has no details saved yet
+// null if nothing saved yet
 async function getFarm(farmId, client = db) {
     const farm = await client.query(
         'SELECT farm_id, water_source, water_name, location_label, created_at, updated_at FROM farms WHERE farm_id = $1',

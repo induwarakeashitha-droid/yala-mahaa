@@ -5,8 +5,8 @@ import { Tanks } from './pages/Tanks'
 import { Rivers } from './pages/Rivers'
 import { SmsGateway } from './pages/SmsGateway'
 import { FarmerPortal } from './pages/FarmerPortal'
-import { CanalReports } from './pages/CanalReports'
 import { Database } from './pages/Database'
+import { Reports } from './pages/Reports'
 import { Settings } from './pages/Settings'
 import { Login } from './pages/Login'
 import { useAuth } from './context/AuthContext'
@@ -34,11 +34,13 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="tanks" element={<Tanks />} />
         <Route path="rivers" element={<Rivers />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="sms" element={<SmsGateway />} />
         <Route path="farmers" element={<FarmerPortal />} />
-        <Route path="reports" element={<CanalReports />} />
+        
         <Route path="database" element={<Database />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="settings" element={<Navigate to="/settings/account" replace />} />
+        <Route path="settings/:tab" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

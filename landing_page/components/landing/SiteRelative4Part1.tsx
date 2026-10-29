@@ -10,7 +10,7 @@ const items: MarqueeItem[] = [
   { label: "Canal water dates", icon: CalendarDays, color: "bg-primary-3", photo: `${P}canal.webp`, photoAlt: "Uda Walawe irrigation canal" },
   { label: "Report a blocked canal", icon: MessageSquareWarning, color: "bg-primary-4", photo: `${P}farmers.webp`, photoAlt: "Farmers working in a paddy field" },
   { label: "Add up to 3 photos", icon: Camera, color: "bg-primary-5", photo: `${P}harvest.webp`, photoAlt: "Straw after the harvest" },
-  { label: "සිංහල · தமிழ் · English", icon: Languages, color: "bg-primary-6", photo: `${P}tank.webp`, photoAlt: "Nachchaduwa tank" },
+  { label: "සිංහල - தமிழ் - English", icon: Languages, color: "bg-primary-6", photo: `${P}tank.webp`, photoAlt: "Nachchaduwa tank" },
   { label: "Your crops and yields", icon: Sprout, color: "bg-primary-7", photo: `${P}paddy.webp`, photoAlt: "Paddy fields in Ampara" },
 ];
 

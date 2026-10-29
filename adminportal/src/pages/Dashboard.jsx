@@ -15,6 +15,7 @@ import {
   Users,
   Waves,
   ChevronRight,
+  ClipboardList,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../context/ToastContext'
@@ -43,6 +44,7 @@ const ALERT_ICON = {
   Reservoir: Droplets,
   River: Waves,
   SMS: MessageSquareText,
+  Report: ClipboardList,
   Season: TrendingUp,
 }
 
@@ -69,7 +71,7 @@ function buildKpis({ TANK_SUMMARY, STORAGE_TREND, FLOOD_ALERTS, RIVER_SUMMARY, T
       value: String(TANK_SUMMARY.critical + FLOOD_ALERTS.length),
       unit: '',
       icon: AlertTriangle,
-      trend: `${TANK_SUMMARY.critical} reservoir · ${FLOOD_ALERTS.length} river`,
+      trend: `${TANK_SUMMARY.critical} reservoir - ${FLOOD_ALERTS.length} river`,
       trendDirection: 'up',
       deltaTone: TANK_SUMMARY.critical + FLOOD_ALERTS.length ? 'danger' : undefined,
       hint: 'reservoirs below 10% and gauges above their alert level',
@@ -87,13 +89,13 @@ function buildKpis({ TANK_SUMMARY, STORAGE_TREND, FLOOD_ALERTS, RIVER_SUMMARY, T
     },
     {
       id: 'rainfall',
-      label: 'Highest rainfall · last 24 h',
+      label: 'Most rain - last 24 h',
       value: TOP_RAINFALL?.rainfall != null ? TOP_RAINFALL.rainfall.toFixed(1) : '—',
       unit: 'mm',
       icon: CloudRain,
       trend: TOP_RAINFALL ? TOP_RAINFALL.station : 'No reading',
       trendDirection: 'up',
-      hint: TOP_RAINFALL ? `${TOP_RAINFALL.river} · ${formatDateTime(TOP_RAINFALL.at)}` : '',
+      hint: TOP_RAINFALL ? `${TOP_RAINFALL.river} - ${formatDateTime(TOP_RAINFALL.at)}` : '',
     },
     {
       id: 'farmers',
@@ -184,24 +186,26 @@ export function Dashboard() {
   }
 
   const handleExport = () => {
-    downloadCsv(
+    const ok = downloadCsv(
       `yalamaha-reservoir-storage-${new Date().toLocaleDateString('en-CA')}.csv`,
       TANKS.map((tank) => ({
         Reservoir: tank.name,
         District: tank.district,
         Division: tank.division,
         Type: tank.type,
-        'Capacity (AFT)': tank.capacityAcft,
-        'Storage (AFT)': tank.storageAcft,
-        'Storage (%)': tank.percent,
-        'Water depth (ft)': tank.waterDepth,
+        // blank (not 0) when the reservoir has no figure
+        'Capacity (AFT)': tank.gross_capacity_acft == null ? '' : tank.capacityAcft,
+        'Storage (AFT)': tank.gross_storage_acft == null ? '' : tank.storageAcft,
+        'Storage (%)': tank.hasReading ? tank.percent : '',
+        'Water depth (ft)': tank.water_depth_ft == null ? '' : tank.waterDepth,
         'Rainfall (mm)': tank.rainfall ?? '',
-        Spilling: tank.isSpilling ? 'Yes' : 'No',
+        Spilling: tank.hasReading ? (tank.isSpilling ? 'Yes' : 'No') : '',
         Status: tank.statusMeta.label,
         'Reading date': tank.reading_date ?? '',
       })),
     )
-    toast('Reservoir storage report exported as CSV.', {
+    if (!ok) return toast('No reservoir data to export yet.', { tone: 'error' })
+    toast(`${TANKS.length} reservoirs exported as CSV.`, {
       title: 'Report downloaded',
       tone: 'success',
     })
@@ -220,7 +224,7 @@ export function Dashboard() {
         description={`Reservoir storage, river gauges and farmer registrations. Reservoir readings of ${formatDate(TANK_SUMMARY.latestReading)}.`}
         actions={
           <>
-            <Button icon={Download} variant="secondary" onClick={handleExport}>
+            <Button icon={Download} variant="secondary" onClick={handleExport} disabled={!TANKS.length}>
               Export report
             </Button>
             <Button
@@ -274,7 +278,7 @@ export function Dashboard() {
             <span className="legend-spacer" />
             {peak && (
               <span className="chart-note">
-                Highest {peak.storage.toFixed(1)}% · {peak.month}
+                Highest {peak.storage.toFixed(1)}% - {peak.month}
               </span>
             )}
           </div>

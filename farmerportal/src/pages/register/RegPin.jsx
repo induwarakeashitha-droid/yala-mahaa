@@ -45,7 +45,7 @@ export default function RegPin() {
     <div className="screen">
       <StepHeader step={2} backTo="/register/crops" />
       <div>
-        <div className="eyebrow">{t('step')} 2b · {t('pinStep')}</div>
+        <div className="eyebrow">{t('step')} 2b - {t('pinStep')}</div>
         <h1 className="h1 sm">{t('pinTitle')}</h1>
       </div>
 
@@ -69,7 +69,7 @@ export default function RegPin() {
           {geoPin && (
             <div className="dist-chip static">
               {draft.nearWater ? `${t('about')} ${draft.nearest}` : draft.nearest}
-              {geoPin.accuracy ? ` · GPS ±${geoPin.accuracy} m` : ''}
+              {geoPin.accuracy ? ` - GPS ±${geoPin.accuracy} m` : ''}
             </div>
           )}
           <div className="note-box accent"><Icon name="info" size={18} stroke={2.2} style={{ flex: 'none' }} />{t('pinHelpGps')}</div>

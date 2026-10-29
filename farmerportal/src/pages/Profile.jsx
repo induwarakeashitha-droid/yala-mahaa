@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { formatPhone, useApp } from '../state/AppContext.jsx';
-import { Card, LangSwitch } from '../components/UI.jsx';
+import { Card, LangSwitch, Logo } from '../components/UI.jsx';
 import Icon from '../components/Icon.jsx';
 import { updateProfile } from '../api/auth.js';
 
@@ -64,7 +64,8 @@ export default function Profile() {
       </button>
 
       <div className="center f12 muted lh">
-        {t('appName')} · {t('version')} 1.0.0
+        <Logo size={40} /><br />
+        {t('appName')} - {t('version')} 1.0.0
       </div>
     </div>
   );

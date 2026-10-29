@@ -1,14 +1,12 @@
 const db = require('../config/db.js')
 
 
-// Canals farmers can pick as their water source, from the Mahaweli water issue schedule
-// (Tank-Reserviour/add-cropcalendertodb.py loads it into water_issue_schedule).
-// A canal has no location of its own, so it gets its scheme tank's: from mahawelitanks first,
-// then from reservoirs by name. "Minneriya Left Bank Canal" takes Minneriya's.
-// Tissawewa is left without one: the name fits both the Anuradhapura and the Hambantota tank.
+// canals farmers can pick, from the water issue schedule.
+// canals have no coords so they borrow the scheme tank's (mahawelitanks first, then reservoirs by name).
+// tissawewa skipped on purpose - there's one in anuradhapura and one in hambantota
 exports.getCanals = async (req, res, next) =>{
     try{
-        const result = await db.query(
+        const r = await db.query(
             `SELECT DISTINCT ON (w.tank_name, w.section)
                     w.id, w.tank_name, w.section,
                     to_char(w.water_start, 'YYYY-MM-DD') AS water_start,
@@ -34,9 +32,9 @@ exports.getCanals = async (req, res, next) =>{
         res.status(200).json(
             {
                 status: "success",
-                data: result.rows.map(row => ({
+                data: r.rows.map(row => ({
                     id: row.id,
-                    name: row.section ? `${row.tank_name} · ${row.section}` : `${row.tank_name} canals`,
+                    name: row.section ? `${row.tank_name} - ${row.section}` : `${row.tank_name} canals`,
                     scheme: row.tank_name,
                     section: row.section,
                     water_start: row.water_start,
@@ -47,7 +45,7 @@ exports.getCanals = async (req, res, next) =>{
             }
         )
     }
-    catch(error){
-        next(error)
+    catch(err){
+        next(err)
     }
 }

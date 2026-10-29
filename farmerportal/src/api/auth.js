@@ -22,9 +22,11 @@ export class ApiError extends Error {
 }
 
 // Also used by api/reservoirs.js for the public data routes.
-export async function request(path, { method = 'GET', body, token } = {}) {
+// body is sent as JSON, or as multipart form data when it is a FormData (photo uploads).
+export async function request(path, { method = 'GET', body, token, timeout = TIMEOUT_MS } = {}) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeout);
+  const isForm = body instanceof FormData;
   let res;
   try {
     res = await fetch(`${AUTH_URL}${path}`, {
@@ -33,10 +35,10 @@ export async function request(path, { method = 'GET', body, token } = {}) {
       signal: ctrl.signal,
       headers: {
         Accept: 'application/json',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(body && !isForm ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: isForm ? body : body ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw new ApiError('Cannot reach the server. Check your connection and try again.', 0);
@@ -74,7 +76,7 @@ export function refreshToken() {
 }
 
 // Calls an endpoint that needs the Bearer token, refreshing once if it has expired.
-async function authed(path, opts) {
+export async function authed(path, opts) {
   if (!accessToken) await refreshToken();
   try {
     return await request(path, { ...opts, token: accessToken });
@@ -83,6 +85,19 @@ async function authed(path, opts) {
     await refreshToken();
     return request(path, { ...opts, token: accessToken });
   }
+}
+
+// Like authed(), for endpoints that send a file back (report photos)
+export async function authedBlob(path) {
+  if (!accessToken) await refreshToken();
+  const load = () => fetch(`${AUTH_URL}${path}`, { credentials: 'include', headers: { Authorization: `Bearer ${accessToken}` } });
+  let res = await load();
+  if (res.status === 401) {
+    await refreshToken();
+    res = await load();
+  }
+  if (!res.ok) throw new ApiError('Photo not found.', res.status);
+  return res.blob();
 }
 
 export async function getProfile() {
@@ -101,18 +116,6 @@ export async function updateProfile(changes) {
 // Replaces the farm's water source, location label and crop list.
 export async function saveFarmDetails(farm) {
   const res = await authed('/api/auth/farm', { method: 'PUT', body: farm });
-  return res.data;
-}
-
-// The signed-in farmer's canal problem reports, newest first
-export async function listReports() {
-  const res = await authed('/api/reports');
-  return res.data;
-}
-
-// { issue_type, location, note, photo (JPEG data URL) }
-export async function sendReport(report) {
-  const res = await authed('/api/reports', { method: 'POST', body: report });
   return res.data;
 }
 

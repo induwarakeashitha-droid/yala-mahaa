@@ -16,6 +16,7 @@ const SOURCES = {
   schedule: () => api('/admin/data/schedule'),
   farmerStats: () => api('/admin/data/farmer-stats'),
   campaigns: () => api('/admin/sms/campaigns'),
+  reports: () => api('/admin/reports?limit=5'),
 }
 
 export function DataProvider({ children }) {
@@ -57,6 +58,9 @@ export function DataProvider({ children }) {
       ...buildSchedules(raw.schedule?.data),
       ...buildSms(raw.campaigns?.data),
     }
+    // Canal problems reported by farmers: counts per status and the newest few
+    built.REPORT_COUNTS = raw.reports?.counts || { new: 0, forwarded: 0, in_progress: 0, resolved: 0, rejected: 0 }
+    built.LATEST_REPORTS = raw.reports?.data || []
     return { ...built, SYSTEM_ALERTS: buildAlerts(built) }
   }, [raw])
 

@@ -1,4 +1,4 @@
-# YalaMaha — National Water Command Center
+# Yala Maha — National Water Command Center
 
 The admin portal for Yala Maha, built with React 19, Vite 8 and Recharts. It shows reservoir storage, river gauges, farmers and the water issue schedule from the API database, sends SMS to farmers, and lets admins browse and edit every table.
 

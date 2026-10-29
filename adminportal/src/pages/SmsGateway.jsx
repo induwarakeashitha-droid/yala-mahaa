@@ -7,19 +7,21 @@ import {
   Download,
   Megaphone,
   MessageSquareText,
+  Search,
   Send,
   ShieldCheck,
   Smartphone,
   Sparkles,
   Users,
   Wifi,
+  X,
 } from 'lucide-react'
 import { SMS_TEMPLATES } from '../data/sms'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { api } from '../api/client'
-import { cn, downloadCsv, formatDate, formatDateTime, formatNumber } from '../utils/format'
+import { cn, csvTime, downloadCsv, formatDate, formatDateTime, formatNumber } from '../utils/format'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Card, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -27,16 +29,42 @@ import { Badge } from '../components/ui/Badge'
 import { Progress } from '../components/ui/Progress'
 import { Modal } from '../components/ui/Overlay'
 import { SmsVolumeChart } from '../components/charts'
+import { AutoFloodAlerts } from '../components/AutoFloodAlerts'
 import { Pie, PieChart, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 
 const STATUS_TONE = {
   Delivered: 'success',
-  Partial: 'warning',
+  Accepted: 'info',
+  Sending: 'info',
+  'Partly delivered': 'warning',
+  'Partly sent': 'warning',
   Failed: 'critical',
+  'Dry run': 'neutral',
+}
+const STATUS_FILTERS = ['all', 'Delivered', 'Sending', 'Partly delivered', 'Failed', 'Dry run']
+
+// GSM-7 letters fit 160 per SMS (153 when split); anything else, like Sinhala or Tamil,
+// is sent as Unicode: 70 per SMS (67 when split)
+const GSM7 = /^[A-Za-z0-9 \r\n@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà^{}\\[~\]|€]*$/
+function smsParts(text) {
+  const unicode = !GSM7.test(text)
+  // ^ { } \ [ ] ~ | € take two GSM characters
+  const length = unicode ? text.length : text.length + (text.match(/[\^{}\\[\]~|€]/g) || []).length
+  const [single, multi] = unicode ? [70, 67] : [160, 153]
+  return { unicode, length, parts: length <= single ? 1 : Math.ceil(length / multi), perPart: length <= single ? single : multi }
 }
 
 // Groups shown as buttons; the rest of the districts, reservoirs and tanks are in the select
 const GROUP_BUTTONS = 5
+const MAX_PICKED = 500
+
+// /admin/farmers filter for a group, to find a farmer in it for the preview
+const GROUP_FILTER = {
+  all: () => '',
+  district: (value) => `&district=${encodeURIComponent(value)}`,
+  reservoir: (value) => `&reservoir_id=${value}`,
+  tank: (value) => `&tank_id=${value}`,
+}
 
 function DeliveryDonut({ data, total }) {
   return (
@@ -44,6 +72,7 @@ function DeliveryDonut({ data, total }) {
       <ResponsiveContainer width="100%" height={158}>
         <PieChart>
           <Pie
+            isAnimationActive={false}
             data={data}
             dataKey="value"
             nameKey="name"
@@ -124,6 +153,15 @@ export function SmsGateway() {
   const [campaignFilter, setCampaignFilter] = useState('all')
   const [tankAlert, setTankAlert] = useState(null)
   const [checkingAlert, setCheckingAlert] = useState(false)
+  // 'groups' sends to a whole group, 'pick' to farmers chosen one by one
+  const [recipientMode, setRecipientMode] = useState('groups')
+  const [picked, setPicked] = useState([])
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [previewId, setPreviewId] = useState(null)
+  // A real farmer from the selected group, so {{name}} in the preview is a name the message would use
+  const [groupSample, setGroupSample] = useState(null)
 
   useEffect(() => {
     api('/admin/sms/audiences')
@@ -135,15 +173,74 @@ export function SmsGateway() {
   }, [toast])
 
   const groups = useMemo(() => buildGroups(audiences), [audiences])
-  const activeGroup = groups.find((item) => item.id === groupId) || groups[0]
-  const parts = Math.max(1, Math.ceil(message.length / 160))
+  const selectedGroup = groups.find((item) => item.id === groupId) || groups[0]
+  const activeGroup = recipientMode === 'pick'
+    ? {
+        id: 'picked',
+        audience: { type: 'farmers', value: picked.map((f) => f.farmer_id) },
+        name: picked.length === 1 ? picked[0].full_name : `${formatNumber(picked.length)} chosen farmers`,
+        count: picked.length,
+      }
+    : selectedGroup
+
+  // first farmer of the selected group, for the preview
+  const groupAudience = selectedGroup?.audience
+  useEffect(() => {
+    if (!groupAudience) return undefined
+    let live = true
+    const filter = GROUP_FILTER[groupAudience.type]?.(groupAudience.value) ?? ''
+    api(`/admin/farmers?is_active=true&limit=1${filter}`)
+      .then((result) => live && setGroupSample(result.data[0]?.full_name || null))
+      .catch(() => live && setGroupSample(null))
+    return () => { live = false }
+  }, [groupAudience])
+
+  // farmer search, a moment after typing stops
+  useEffect(() => {
+    const q = query.trim()
+    if (recipientMode !== 'pick' || !q) { setResults([]); return undefined }
+    let live = true
+    setSearching(true)
+    const timer = setTimeout(() => {
+      api(`/admin/farmers?is_active=true&limit=8&q=${encodeURIComponent(q)}`)
+        .then((result) => live && setResults(result.data))
+        .catch((error) => live && toast(error.message, { title: 'Search failed', tone: 'error' }))
+        .finally(() => live && setSearching(false))
+    }, 250)
+    return () => { live = false; clearTimeout(timer) }
+  }, [query, recipientMode, toast])
+
+  const isPicked = (id) => picked.some((f) => f.farmer_id === id)
+  const addFarmer = (farmer) => {
+    if (isPicked(farmer.farmer_id)) return
+    if (picked.length >= MAX_PICKED) { toast(`Choose at most ${MAX_PICKED} farmers.`, { tone: 'error' }); return }
+    setPicked((list) => [...list, farmer])
+  }
+  const addAllResults = () => results.forEach(addFarmer)
+  const removeFarmer = (id) => setPicked((list) => list.filter((f) => f.farmer_id !== id))
+
+  const previewName = recipientMode === 'pick'
+    ? (picked.find((f) => f.farmer_id === previewId) || picked[0])?.full_name || null
+    : groupSample
+  // the longest name decides how many parts {{name}} can turn into
+  const sms = smsParts(message.trim().replace(/\{\{\s*name\s*\}\}/g, previewName || 'Farmer Name'))
+  const parts = sms.parts
+  const creditsNeeded = (activeGroup?.count || 0) * parts
+  const credits = gateway?.balance?.credits ?? null
 
   // Fills a template from the latest data
   const fillTemplate = (template, station) => {
     const flood = station || FLOOD_ALERTS[0] || RIVER_STATIONS[0]
-    const nextRelease = IRRIGATION_SCHEDULES.find((item) => item.status === 'Scheduled') || IRRIGATION_SCHEDULES[0]
+    const nextRelease = IRRIGATION_SCHEDULES.find((item) => item.status === 'Not started') || IRRIGATION_SCHEDULES[0]
     const tank = AT_RISK_TANKS[0]
+    // What the gauge has actually reached, so the message never overstates it
+    const reached = {
+      major: 'has reached its major flood level',
+      warning: 'has reached its minor flood level',
+      watch: 'has reached its alert level',
+    }[flood?.status] || 'is being watched for flooding'
     return template.body
+      .replace('{{level}}', reached)
       .replace('{{river}}', flood?.river || 'the river')
       .replace('{{station}}', flood?.name || 'the gauge')
       .replace('{{scheme}}', nextRelease?.system || 'your scheme')
@@ -229,30 +326,31 @@ export function SmsGateway() {
         Message: campaign.message,
         Audience: campaign.audience,
         Recipients: campaign.recipients,
-        Sent: campaign.delivered,
-        Failed: campaign.failed,
+        'Accepted by Text.lk': campaign.delivered,
+        'Delivered to phone': campaign.tracked ? campaign.reached : '',
+        'On the way': campaign.tracked ? campaign.pending : '',
+        Failed: campaign.failedAll,
+        Status: campaign.status,
+        'Cost (credits)': campaign.cost || '',
         'Dry run': campaign.dry_run ? 'Yes' : 'No',
         'Sent by': campaign.sent_by ?? '',
-        'Sent at': campaign.sentAt.toISOString(),
+        'Sent at': csvTime(campaign.sentAt),
       })),
     )
     toast('Campaign history downloaded.', { title: 'Export complete', tone: 'success' })
   }
 
-  const totals = CAMPAIGNS.reduce(
-    (sum, campaign) => ({ delivered: sum.delivered + campaign.delivered, failed: sum.failed + campaign.failed }),
-    { delivered: 0, failed: 0 },
-  )
   const deliveryBreakdown = [
-    { name: 'Sent', value: totals.delivered, color: '#16a34a' },
-    { name: 'Failed', value: totals.failed, color: '#dc2626' },
+    { name: 'Delivered to phone', value: SMS_SUMMARY.reached, color: '#16a34a' },
+    { name: 'On the way', value: SMS_SUMMARY.pending, color: '#2563eb' },
+    { name: 'Failed', value: SMS_SUMMARY.failed, color: '#dc2626' },
   ]
 
   const stats = [
     {
       label: 'Sent today',
       value: formatNumber(SMS_SUMMARY.sentToday),
-      hint: SMS_SUMMARY.lastSent ? `Last campaign ${formatDateTime(SMS_SUMMARY.lastSent)}` : 'No campaign sent yet',
+      hint: SMS_SUMMARY.lastSent ? `Accepted by Text.lk - last ${formatDateTime(SMS_SUMMARY.lastSent)}` : 'No campaign sent yet',
       icon: Send,
       tone: 'primary',
     },
@@ -266,7 +364,9 @@ export function SmsGateway() {
     {
       label: 'Delivery rate',
       value: SMS_SUMMARY.deliveryRate === null ? '—' : `${SMS_SUMMARY.deliveryRate}%`,
-      hint: 'Accepted by the gateway, all campaigns',
+      hint: SMS_SUMMARY.pending
+        ? `Reached the phone, per Text.lk - ${formatNumber(SMS_SUMMARY.pending)} on the way`
+        : 'Reached the phone, per Text.lk',
       icon: CheckCheck,
       tone: 'success',
     },
@@ -290,7 +390,7 @@ export function SmsGateway() {
   return (
     <div className="page sms-page">
       <PageHeader
-        eyebrow={`Farmer communications · ${gateway?.provider || 'SMS gateway'}`}
+        eyebrow={`Farmer communications - ${gateway?.provider || 'SMS gateway'}`}
         badge={
           <Badge tone={mode.tone} dot>
             {mode.label}
@@ -347,6 +447,81 @@ export function SmsGateway() {
                 <span>Recipients</span>
                 <span>{activeGroup ? `${formatNumber(activeGroup.count)} active farmers` : 'Loading…'}</span>
               </div>
+              <div className="segmented" style={{ marginBottom: 8 }}>
+                <button type="button" className={recipientMode === 'groups' ? 'active' : ''} onClick={() => setRecipientMode('groups')}>
+                  Groups
+                </button>
+                <button type="button" className={recipientMode === 'pick' ? 'active' : ''} onClick={() => setRecipientMode('pick')}>
+                  Choose farmers{picked.length ? ` (${picked.length})` : ''}
+                </button>
+              </div>
+              {recipientMode === 'pick' ? (
+                <div className="farmer-picker">
+                  <label className="search-field">
+                    <Search size={15} />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Search by name, phone, farm ID, district…"
+                      aria-label="Search farmers"
+                    />
+                    {query && (
+                      <button type="button" onClick={() => setQuery('')} aria-label="Clear search">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </label>
+                  {query.trim() && (
+                    <div className="picker-results" role="listbox" aria-label="Farmers found">
+                      {searching && !results.length && <div className="picker-empty">Searching…</div>}
+                      {!searching && !results.length && <div className="picker-empty">No active farmer matches.</div>}
+                      {results.map((farmer) => {
+                        const added = isPicked(farmer.farmer_id)
+                        return (
+                          <button
+                            type="button"
+                            key={farmer.farmer_id}
+                            className={cn('picker-row', added && 'is-added')}
+                            onClick={() => (added ? removeFarmer(farmer.farmer_id) : addFarmer(farmer))}
+                            aria-selected={added}
+                          >
+                            <span>
+                              <strong>{farmer.full_name}</strong>
+                              <small>{[farmer.farm_id, farmer.phone, farmer.district].filter(Boolean).join(' - ')}</small>
+                            </span>
+                            <em>{added ? 'Added ✓' : '+ Add'}</em>
+                          </button>
+                        )
+                      })}
+                      {results.length > 1 && (
+                        <button type="button" className="picker-add-all" onClick={addAllResults}>
+                          Add all {results.length} shown
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {picked.length > 0 ? (
+                    <div className="picker-chips">
+                      {picked.map((farmer) => (
+                        <span key={farmer.farmer_id} className="picker-chip">
+                          {farmer.full_name}
+                          <button type="button" onClick={() => removeFarmer(farmer.farmer_id)} aria-label={`Remove ${farmer.full_name}`}>
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                      {picked.length > 1 && (
+                        <button type="button" className="picker-clear" onClick={() => setPicked([])}>
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="picker-empty">Search and add the farmers who should get this message.</div>
+                  )}
+                </div>
+              ) : (
+              <>
               <div className="group-grid">
                 {groups.slice(0, GROUP_BUTTONS).map((item) => (
                   <button
@@ -372,6 +547,8 @@ export function SmsGateway() {
                     ))}
                   </select>
                 </label>
+              )}
+              </>
               )}
             </div>
 
@@ -399,7 +576,7 @@ export function SmsGateway() {
             <div>
               <div className="composer-label">
                 <span>Message</span>
-                <span>Plain English text costs the fewest SMS parts</span>
+                <span>English: 160 letters per SMS - Sinhala/Tamil: 70</span>
               </div>
               <div className="message-wrap">
                 <textarea
@@ -410,12 +587,18 @@ export function SmsGateway() {
                   readOnly={!canEdit}
                 />
                 <div className="message-meta">
-                  <strong className={message.length > 160 ? 'warn' : ''}>{message.length} chars</strong>
-                  <span>·</span>
+                  <strong className={parts > 1 ? 'warn' : ''}>{sms.length} chars</strong>
+                  {sms.unicode && message && (
+                    <>
+                      <span>-</span>
+                      <span>Unicode, {sms.perPart} per SMS</span>
+                    </>
+                  )}
+                  <span>-</span>
                   <span>
                     {parts} SMS part{parts > 1 ? 's' : ''}
                   </span>
-                  <span>·</span>
+                  <span>-</span>
                   <span>640 max</span>
                 </div>
               </div>
@@ -436,11 +619,17 @@ export function SmsGateway() {
               <div className="credit-estimate">
                 <span>Messages to send</span>
                 <strong>
-                  {formatNumber((activeGroup?.count || 0) * parts)} SMS
+                  {formatNumber(creditsNeeded)} SMS
                   <span style={{ fontWeight: 500, fontSize: 9, color: 'var(--muted-2)', marginLeft: 6 }}>
-                    · {formatNumber(activeGroup?.count || 0)} farmers × {parts}
+                    - {formatNumber(activeGroup?.count || 0)} farmers × {parts}
+                    {credits !== null && !gateway?.dryRun ? ` - ${formatNumber(credits)} credits left` : ''}
                   </span>
                 </strong>
+                {credits !== null && !gateway?.dryRun && creditsNeeded > credits && (
+                  <small style={{ color: 'var(--critical, #dc2626)', fontSize: 10 }}>
+                    Not enough Text.lk credits: top up before sending.
+                  </small>
+                )}
               </div>
               <Button variant="primary" size="md" icon={Send} loading={sending} onClick={askToSend}>
                 Send message
@@ -479,19 +668,33 @@ export function SmsGateway() {
                   <div className="phone-thread">
                     <span className="phone-day">TODAY</span>
                     <div className="phone-bubble">
-                      {message.trim().replace(/\{\{\s*name\s*\}\}/g, 'Nimal Perera') ||
+                      {message.trim().replace(/\{\{\s*name\s*\}\}/g, previewName || '{{name}}') ||
                         'Your message preview appears here as you type…'}
                     </div>
                     <div className="phone-meta">
                       <span>
-                        {message.length} chars · {parts} SMS
+                        {sms.length} chars - {parts} SMS
                       </span>
                       <span>Just now</span>
                     </div>
                   </div>
                 </div>
               </div>
-              <p className="phone-caption">{'{{name}}'} is shown with an example name.</p>
+              {recipientMode === 'pick' && picked.length > 1 && (
+                <label className="select-field" style={{ marginTop: 8 }}>
+                  <span>Preview as</span>
+                  <select value={previewId || picked[0].farmer_id} onChange={(event) => setPreviewId(event.target.value)}>
+                    {picked.map((farmer) => (
+                      <option key={farmer.farmer_id} value={farmer.farmer_id}>{farmer.full_name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <p className="phone-caption">
+                {previewName
+                  ? `{{name}} is shown as ${previewName}${recipientMode === 'pick' ? '' : `, a farmer in ${activeGroup?.name}`}. Each farmer gets their own name.`
+                  : '{{name}} becomes each farmer\'s name.'}
+              </p>
             </div>
           </Card>
 
@@ -517,6 +720,16 @@ export function SmsGateway() {
                 <span>Mode</span>
                 <strong>{gateway?.dryRun ? 'Dry run (SMS_DRY_RUN=true)' : 'Live'}</strong>
               </div>
+              {gateway?.balance && (
+                <div className="gateway-row">
+                  <span>Credits left</span>
+                  <strong>
+                    {gateway.balance.error
+                      ? 'Could not check'
+                      : `${formatNumber(gateway.balance.credits)}${gateway.balance.expires ? ` - valid to ${gateway.balance.expires}` : ''}`}
+                  </strong>
+                </div>
+              )}
               <div className="gateway-row">
                 <span>High tank alert</span>
                 <strong>At {gateway?.alertThreshold ?? '—'}% storage</strong>
@@ -539,6 +752,7 @@ export function SmsGateway() {
                 )}
               </div>
             )}
+            <AutoFloodAlerts compact />
             <div className="gateway-actions">
               <Button variant="secondary" size="sm" icon={BellRing} loading={checkingAlert} onClick={checkTankAlert}>
                 Check high tank alert
@@ -550,7 +764,7 @@ export function SmsGateway() {
         <Card className="span-8 chart-card">
           <CardHeader
             icon={MessageSquareText}
-            title="Messages · last 7 days"
+            title="Messages - last 7 days"
             subtitle="Messages sent and failed, from campaigns sent in this portal"
             action={
               <div className="chart-legend inline">
@@ -580,7 +794,7 @@ export function SmsGateway() {
           <CardHeader
             icon={CheckCheck}
             title="Delivery"
-            subtitle="Every message sent from this portal"
+            subtitle="Delivery reports from Text.lk, real sends only"
             action={SMS_SUMMARY.deliveryRate !== null && <Badge tone="success">{SMS_SUMMARY.deliveryRate}%</Badge>}
           />
           <div className="delivery-body">
@@ -606,7 +820,7 @@ export function SmsGateway() {
             subtitle="Every message sent from this portal, newest first"
             action={
               <div className="segmented">
-                {['all', 'Delivered', 'Partial', 'Failed'].map((value) => (
+                {STATUS_FILTERS.map((value) => (
                   <button
                     type="button"
                     key={value}
@@ -633,7 +847,8 @@ export function SmsGateway() {
               </thead>
               <tbody>
                 {filteredCampaigns.map((campaign) => {
-                  const progress = campaign.recipients ? Math.round((campaign.delivered / campaign.recipients) * 100) : 0
+                  const done = campaign.tracked ? campaign.reached : campaign.delivered
+                  const progress = campaign.recipients ? Math.round((done / campaign.recipients) * 100) : 0
                   return (
                     <tr key={campaign.id}>
                       <td>
@@ -647,8 +862,8 @@ export function SmsGateway() {
                             </strong>
                             <small>
                               #{campaign.id}
-                              {campaign.sent_by ? ` · ${campaign.sent_by}` : ''}
-                              {campaign.dry_run ? ' · dry run' : ''}
+                              {campaign.sent_by ? ` - ${campaign.sent_by}` : ''}
+                              {campaign.dry_run ? ' - dry run' : ''}
                             </small>
                           </div>
                         </div>
@@ -659,7 +874,11 @@ export function SmsGateway() {
                         <div className="campaign-progress">
                           <Progress value={progress} tone={STATUS_TONE[campaign.status] || 'primary'} size="xs" />
                           <small>
-                            {formatNumber(campaign.delivered)} sent · {formatNumber(campaign.failed)} failed
+                            {campaign.dry_run
+                              ? `${formatNumber(campaign.delivered)} logged, not sent`
+                              : campaign.tracked
+                                ? `${formatNumber(campaign.reached)} delivered${campaign.pending ? ` - ${formatNumber(campaign.pending)} on the way` : ''} - ${formatNumber(campaign.failedAll)} failed${campaign.cost ? ` - ${formatNumber(campaign.cost)} credits` : ''}`
+                                : `${formatNumber(campaign.delivered)} accepted - ${formatNumber(campaign.failed)} failed`}
                           </small>
                         </div>
                       </td>
