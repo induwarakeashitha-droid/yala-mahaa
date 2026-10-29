@@ -1,30 +1,54 @@
 /**
  * Text.lk SMS Gateway Integration & Farmer Messaging Services
+ * ------------------------------------------------------------
+ * Features:
+ * - Direct carrier integration via Text.lk API v3
+ * - Strict Sri Lankan mobile format validation (zero credits wasted on bad numbers)
+ * - Dry-run toggle to protect SMS credit balance
  */
 
-// In-memory OTP store (phone -> { otp, expiresAt })
-const otpStore = new Map()
-
-function normalizePhoneNumber(phone) {
-  let cleaned = String(phone).trim().replace(/[\s\-+]/g, '')
+/**
+ * Validate Sri Lankan mobile phone numbers strictly
+ * Allows: 07XXXXXXXX, +947XXXXXXXX, 947XXXXXXXX, formatted with spaces or dashes
+ */
+function validateSriLankanMobile(rawPhone) {
+  let cleaned = String(rawPhone || '').trim().replace(/[\s\-+]/g, '')
   if (cleaned.startsWith('0')) {
     cleaned = '94' + cleaned.slice(1)
   }
-  return cleaned
-}
 
-async function sendSms(recipients, message, options = {}) {
-  const recipientList = (Array.isArray(recipients) ? recipients : String(recipients).split(','))
-    .map(normalizePhoneNumber)
-    .filter(Boolean)
-
-  if (recipientList.length === 0) {
-    throw new Error('No recipient phone number provided.')
+  // Sri Lankan Mobile: 94 + (70, 71, 72, 74, 75, 76, 77, 78) + 7 digits = 11 digits
+  const mobileRegex = /^94(7[01245678])\d{7}$/
+  if (!mobileRegex.test(cleaned)) {
+    return {
+      valid: false,
+      normalized: cleaned,
+      error: 'Invalid mobile number. Must be a valid 10-digit mobile (e.g. :  077 123 4567).'
+    }
   }
 
-  const recipientStr = recipientList.join(',')
+  return { valid: true, normalized: cleaned }
+}
 
-  // Dry run mode prevents spending SMS credits during testing/development unless forceLive is true
+function normalizePhoneNumber(phone) {
+  const result = validateSriLankanMobile(phone)
+  return result.normalized
+}
+
+/**
+ * Dispatch SMS via Text.lk API v3
+ */
+async function sendSms(recipients, message, options = {}) {
+  const firstRecipient = (Array.isArray(recipients) ? recipients[0] : recipients)
+    ?.toString()
+    .split(',')[0]    //prevent one OTP getting sent to multiple nums IMPORTNT Logic
+  const recipientCheck = validateSriLankanMobile(firstRecipient)
+
+  if (!recipientCheck.valid) {
+    throw new Error('No valid Sri Lankan mobile numbers provided.')
+  }
+
+  const recipientStr = recipientCheck.normalized
   const isDryRun = options.forceLive ? false : process.env.SMS_DRY_RUN === 'true'
 
   if (isDryRun) {
@@ -45,98 +69,70 @@ async function sendSms(recipients, message, options = {}) {
   const senderId = process.env.TEXTLK_SENDER_ID || 'TextLKDemo'
 
   const response = await fetch('https://app.text.lk/api/v3/sms/send', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      recipient: recipientStr,
-      sender_id: senderId,
-      type: 'plain',
-      message,
-    }),
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          recipient: recipientStr,
+          sender_id: senderId,
+          type: 'plain',
+          message,
+        }),
   })
+  
 
   const data = await response.json()
 
   if (!response.ok) {
-    throw new Error(`TextLK API error (${response.status}): ${JSON.stringify(data)}`)
+       throw new Error(`Message API error (${response.status}): ${JSON.stringify(data)}`)
   }
 
   return data
 }
 
 /**
- * Generate a 6-digit OTP and send via SMS to the farmer
- */
-async function generateAndSendOtp(phone, options = {}) {
-  const normalized = normalizePhoneNumber(phone)
-  const otp = String(Math.floor(100000 + Math.random() * 900000))
-  const expiresAt = Date.now() + 5 * 60 * 1000 // 5 minutes validity
-
-  otpStore.set(normalized, { otp, expiresAt })
-
-  const message = `YalaMaha: Your farmer verification code is ${otp}. Valid for 5 minutes.`
-  const smsResult = await sendSms(normalized, message, options)
-
-  return {
-    phone: normalized,
-    expiresAt,
-    smsResult,
-    // Return otp in dev/dry-run for convenience
-    devOtp: (process.env.SMS_DRY_RUN === 'true' && !options.forceLive) ? otp : undefined
-  }
-}
-
-/**
- * Verify a farmer-provided 6-digit OTP code
- */
-function verifyOtpCode(phone, code) {
-  const normalized = normalizePhoneNumber(phone)
-  const cleanCode = String(code).trim()
-
-  // Allow standard demo OTP code during testing
-  if (cleanCode === '529814') {
-    return { valid: true, note: 'Demo code accepted' }
-  }
-
-  const record = otpStore.get(normalized)
-  if (!record) {
-    return { valid: false, message: 'No OTP requested for this number or code expired.' }
-  }
-
-  if (Date.now() > record.expiresAt) {
-    otpStore.delete(normalized)
-    return { valid: false, message: 'OTP has expired. Please request a new code.' }
-  }
-
-  if (record.otp !== cleanCode) {
-    return { valid: false, message: 'Incorrect OTP code.' }
-  }
-
-  otpStore.delete(normalized)
-  return { valid: true, message: 'Phone verified successfully.' }
-}
-
-/**
  * Dispatch confirmation SMS after farmer completes registration
  */
-async function sendRegistrationConfirmation(phone, { farmerName, farmId, acres }, options = {}) {
-  const normalized = normalizePhoneNumber(phone)
+
+async function sendRegistrationConfirmation(phone, { farmerName, acres }, options = {}) {
+  const phoneCheck = validateSriLankanMobile(phone)
+  if (!phoneCheck.valid) {
+    throw new Error(phoneCheck.error)
+  }
+  const normalized = phoneCheck.normalized
   const name = farmerName || 'Farmer'
-  const id = farmId || 'FAR-001'
   const totalAcres = acres ? `${acres} ac` : 'registered area'
-  const message = `YalaMaha: Welcome ${name}! Farm ${id} (${totalAcres}) is registered for Mahaweli B irrigation schedules & flood alerts.`
+  const message = `Yala Maha: Welcome ${name}! Farm of land (${totalAcres}) acres is registered for irrigation schedules & flood alerts.`
 
   return await sendSms(normalized, message, options)
 }
 
+// read-only Text.lk calls: one message's delivery status, and the account balance
+async function textlkGet(path) {
+  const token = process.env.TEXTLK_API_TOKEN
+  if (!token) throw new Error('TEXTLK_API_TOKEN is not configured.')
+  const response = await fetch(`https://app.text.lk/api/v3${path}`, {
+    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || data.status === 'error') {
+    throw new Error(`Message API error (${response.status}): ${data.message || 'no details'}`)
+  }
+  return data.data
+}
+
+const getSmsStatus = (uid) => textlkGet(`/sms/${encodeURIComponent(uid)}`)
+const getBalance = () => textlkGet('/balance')
+
 module.exports = {
   sendSms,
+  getSmsStatus,
+  getBalance,
   normalizePhoneNumber,
-  generateAndSendOtp,
-  verifyOtpCode,
+  validateSriLankanMobile,
   sendRegistrationConfirmation
 }

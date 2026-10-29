@@ -1,2 +1,11 @@
 *.env
 node_modules
+dist/
+*.log
+# Photos attached to canal reports (never commit farmers' photos)
+API/uploads/
+
+# flood model downloads (dmc pdfs, rain history, datasets)
+flood-model/data/
+__pycache__/
+.env.production

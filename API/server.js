@@ -1,16 +1,26 @@
+const path = require('path')
 const dotenv = require('dotenv')
 
-dotenv.config({path: './config.env'})
+// Load environment variables reliably from api/config.env and fallback to root .env 
+dotenv.config({ path: path.join(__dirname, 'config.env') })
+dotenv.config({ path: path.join(__dirname, '..', '.env') })
+
+const logger =require('./utils/logger.js')
 const app = require('./app.js')
+const { startReminderJob } = require('./services/reminderJob.js')
+const { startFloodAlertJob } = require('./services/floodAlertJob.js')
 
+const PORT = process.env.API_PORT || 8005
 
+try{
+    app.listen(PORT, () => {
+        console.log(`API Started Successfully on port ${PORT}`)
+        logger.info(`API Running on PORT ${PORT}`)
+        startReminderJob()
+        startFloodAlertJob()
+    })
 
-const PORT = 8005
-app.listen(PORT, (port) =>{
-    console.log("API Started Successfully!!! on", PORT)
-})
-
-
-
-
-
+} catch(error) {
+    logger.error(`Error: ${error}`)
+    process.exit(1)
+}

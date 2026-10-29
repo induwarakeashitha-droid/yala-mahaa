@@ -17,7 +17,7 @@ function buildMessage(tanks) {
   const top = tanks.slice(0, 4)
   const list = top.map(t => `${t.tank_name} ${Math.round(t.storage_percentage)}%`).join(', ')
   const more = tanks.length > top.length ? ` +${tanks.length - top.length} more` : ''
-  return `YalaMaha ALERT: High tank levels: ${list}${more}. Check downstream fields.`
+  return `Yala Maha ALERT: High tank levels: ${list}${more}. Check downstream fields.`
 }
 
 async function runAlertCheck({ send }) {
