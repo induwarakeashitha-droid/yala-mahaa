@@ -497,6 +497,24 @@ a { color: inherit; }
 .water-screen { position: relative; min-height: 100%; padding-top: 400px; background: var(--dark); overflow: hidden; }
 .water-map { position: absolute; left: 0; right: 0; top: 0; height: 440px; background: #2c3f16; isolation: isolate; }
 .water-map .leaflet-control-attribution { margin-bottom: 44px; }
+.irrigation-map-legend { position: absolute; z-index: 1001; top: 126px; left: 16px; display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 12px; padding: 9px 11px; border-radius: 12px; background: rgba(15,31,49,.86); color: #fff; font-size: 10px; line-height: 1.2; box-shadow: 0 2px 9px rgba(0,0,0,.2); }
+.irrigation-map-legend > div:not(.irrigation-map-status) { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.irrigation-map-legend i { display: inline-block; flex: none; width: 12px; height: 9px; border: 1px solid rgba(255,255,255,.75); }
+.irrigation-map-legend .legend-reservoir { background: #73dfff; }
+.irrigation-map-legend .legend-medium-reservoir { background: #42d6ac; border-color: #008d6d; }
+.irrigation-map-legend .legend-highlight { background: #ff00ff; }
+.irrigation-map-legend .legend-bund { height: 3px; border: 0; background: #b35933; }
+.irrigation-map-legend .legend-canal { height: 3px; border: 0; background: #2996ff; }
+.irrigation-map-legend .legend-area { background: rgba(223,240,223,.65); border-color: #00a884; }
+.irrigation-map-status { grid-column: 1 / -1; color: #ffd166; white-space: normal; max-width: 220px; }
+/* pin map: bottom-right, clear of the Satellite/Map switch (top-left), zoom (top-right) and
+   Use my location (bottom-left); one narrow column, closed by default */
+.gmap-wrap .irrigation-map-legend { top: auto; left: auto; right: 12px; bottom: 26px; }
+.irrigation-map-legend.collapsible { grid-template-columns: max-content; max-width: 150px; }
+.irrigation-map-legend.collapsible .irrigation-map-status { max-width: 150px; }
+.irrigation-map-legend.closed { padding: 6px 9px; }
+.irrigation-map-legend.closed .irrigation-map-status:empty { display: none; }
+.legend-toggle { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
 .map-top { position: absolute; left: 16px; right: 16px; top: 20px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; z-index: 1001; }
 .map-title { font-size: 22px; font-weight: 600; color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,.5); }
 .map-tools { position: absolute; right: 16px; top: 150px; z-index: 1001; display: flex; flex-direction: column; gap: 8px; }

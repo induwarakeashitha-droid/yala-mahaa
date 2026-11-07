@@ -44,3 +44,7 @@ CREATE TABLE IF NOT EXISTS gauge_rain_hourly (
     rain_mm   DOUBLE PRECISION,
     PRIMARY KEY (station, at, source)
 );
+
+-- river flood risk per farm (flood-model/farm_risk/score_farms.py creates and fills it)
+-- score 0-100, category very_low / low / medium / high / very_high; rivers = top 5 rivers with details
+-- see score_farms.py for the full definition

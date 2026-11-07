@@ -16,5 +16,8 @@ api/uploads/
 
 # flood model downloads (dmc pdfs, rain history, datasets)
 flood-model/data/
+# 12.5 m DEM tiles for the farm flood risk score (244 MB, copied to the server by hand)
+flood-model/dem/
 __pycache__/
 .env.production
+extracted_output/db_export/mahaweli_water_level.csv

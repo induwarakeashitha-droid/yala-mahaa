@@ -3,7 +3,9 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Icon from './Icon.jsx';
 import { MAP_CENTER } from '../data.js';
-import { MAPPED_TANKS, PIN_SVG } from './GoogleFarmMap.jsx';
+import { MAPPED_TANKS, nearestTank, PIN_SVG } from './GoogleFarmMap.jsx';
+import { addIrrigationLayers } from '../maps/irrigationLayers.js';
+import IrrigationLegend from '../maps/IrrigationLegend.jsx';
 
 // Free map: no account, key or billing.
 // Satellite: Esri World Imagery (+ Esri place labels). Map: OpenStreetMap. Search: OSM Nominatim.
@@ -40,6 +42,8 @@ export default function LeafletFarmMap({ pin, onPin, onLocate, onFail, autoLocat
   const boxRef = useRef();
   const mapRef = useRef();
   const markerRef = useRef();
+  const irrigationLayersRef = useRef(null);
+  const selectionRef = useRef({ names: [], points: [] });
   const onPinRef = useRef(onPin);
   onPinRef.current = onPin;
   const layersRef = useRef(null);
@@ -51,6 +55,13 @@ export default function LeafletFarmMap({ pin, onPin, onLocate, onFail, autoLocat
   const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [layerStatus, setLayerStatus] = useState({ loading: true, error: false, zoomedOut: false });
+  // highlight the tank nearest the pin; with no pin yet there is nothing to highlight
+  const nearest = pin?.lat != null ? nearestTank(pin) : null;
+  const selectedTank = MAPPED_TANKS.find((tank) => tank.name === nearest?.name);
+  selectionRef.current = selectedTank
+    ? { names: [selectedTank.name, selectedTank.aka, selectedTank.name.match(/\(([^)]+)\)/)?.[1]].filter(Boolean), points: [selectedTank.pos] }
+    : { names: [], points: [] };
 
   useEffect(() => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) { onFail(); return undefined; }
@@ -62,8 +73,11 @@ export default function LeafletFarmMap({ pin, onPin, onLocate, onFail, autoLocat
     });
     L.control.zoom({ position: 'topright' }).addTo(map);
     map.attributionControl.setPrefix(false);
+    map.attributionControl.addAttribution('Reservoir, bund & canal data © Sri Lanka Irrigation Department');
     layersRef.current.satellite.forEach((l) => l.addTo(map));
     MAPPED_TANKS.forEach((tk) => L.marker([tk.pos.lat, tk.pos.lng], { icon: tankIcon(tk.name), interactive: false, keyboard: false }).addTo(map));
+    // not tappable: a tap on an irrigable area or reservoir has to place the pin, not open a popup
+    irrigationLayersRef.current = addIrrigationLayers(map, () => selectionRef.current, setLayerStatus, { interactive: false });
 
     const marker = L.marker([0, 0], { icon: pinIcon, draggable: true, title: 'Your field', autoPan: true });
     marker.on('dragend', () => { const p = marker.getLatLng(); onPinRef.current({ lat: p.lat, lng: p.lng }); });
@@ -74,7 +88,13 @@ export default function LeafletFarmMap({ pin, onPin, onLocate, onFail, autoLocat
     // The container is sized by CSS after first paint; let Leaflet re-measure.
     setTimeout(() => map.invalidateSize(), 0);
     setReady(true);
-    return () => { map.remove(); mapRef.current = null; markerRef.current = null; };
+    return () => {
+      irrigationLayersRef.current?.remove();
+      irrigationLayersRef.current = null;
+      map.remove();
+      mapRef.current = null;
+      markerRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -89,6 +109,7 @@ export default function LeafletFarmMap({ pin, onPin, onLocate, onFail, autoLocat
     } else if (map.hasLayer(marker)) {
       marker.remove();
     }
+    map.fire('irrigationselectionchange');
   }, [pin, ready]);
 
   const switchBase = (next) => {
@@ -154,6 +175,7 @@ export default function LeafletFarmMap({ pin, onPin, onLocate, onFail, autoLocat
 
       <div className="gmap-wrap">
         <div ref={boxRef} className="gmap" role="application" aria-label={t('pinTitle')} />
+        <IrrigationLegend t={t} status={layerStatus} collapsible selectedLabel={t('mapNearestTank')} />
         <div className="seg-mini map-base" role="radiogroup" aria-label="Map type">
           <button type="button" role="radio" aria-checked={base === 'satellite'} className={base === 'satellite' ? 'on' : ''} onClick={() => switchBase('satellite')}>Satellite</button>
           <button type="button" role="radio" aria-checked={base === 'map'} className={base === 'map' ? 'on' : ''} onClick={() => switchBase('map')}>Map</button>

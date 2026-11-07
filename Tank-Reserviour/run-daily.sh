@@ -7,3 +7,7 @@ for script in reservious_daily.py get-mahaweli-tank-data.py get-realtime-rainfal
   python "$script"
   echo "exit code $?"
 done
+# new farms and moved pins only; skips itself when the DEM folder is not mounted
+echo "=== $(date +%T) farm flood risk"
+python farm_risk/score_farms.py
+echo "exit code $?"

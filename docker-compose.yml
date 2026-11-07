@@ -75,6 +75,9 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+      FLOOD_DEM_DIR: /dem
+    volumes:
+      - ${FLOOD_DEM_DIR:-./flood-model/dem}:/dem:ro   # the 44 unzipped ALOS_DEM_T*.tif tiles (244 MB)
     depends_on:
       db: { condition: service_healthy }
 

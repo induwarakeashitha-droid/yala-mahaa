@@ -82,6 +82,9 @@ The pin step picks a map in this order:
    Keep the map attribution visible, and keep search on submit only: Nominatim allows at most 1 request per
    second and no search-as-you-type. For heavy production traffic, move to a paid or self-hosted tile/search provider.
 With no internet the step shows a retry card (and retries by itself when the connection returns).
+On the free Leaflet pin map, the Irrigation Department reservoir outlines, bunds, canals, irrigable areas,
+sluices and spills are shown over the existing basemap; the tank nearest the pin is highlighted. The existing
+basemap and tank labels remain available if the GIS layers cannot be reached.
 
 **Location is required.** The step requests GPS as soon as it opens and Continue stays disabled until the phone
 returns a position (`draft.located`); the farmer can then drag the pin onto the exact field. Browsers only allow
@@ -99,6 +102,15 @@ GPS ("Use my location") needs HTTPS on a real phone (localhost is fine for testi
 
 The tanks on the maps and in the water-source search are `RESERVOIRS` in `src/reservoirs.js`, generated from `reservoirs_data.json` by `npm run reservoirs`.
 `aka` holds other spellings farmers may search for (the Mahaweli Authority names, e.g. Rajanganaya for Rajangana).
+
+The registration pin map and Water map load reservoir outlines, bunds, canals, irrigable areas, tank coordinates,
+sluices and spills from the public Sri Lanka Irrigation Department ArcGIS `Scheme_Data_2` feature service. This
+is also the feature service used by the Medium Reservoirs dashboard; its 166 Medium reservoir polygons are
+shown in green, while Major and other reservoirs retain their cyan style. The maps request features for the
+visible area, preserve full-resolution reservoir polygon coordinates for smooth outlines, simplify supporting
+geometry at the current zoom, and highlight the nearest/selected tank in magenta. At wide-area zoom levels,
+dense supporting layers are hidden. The original satellite/street basemap and tank labels remain visible as a
+fallback if ArcGIS data cannot be reached.
 
 The saved pin is `draft.pin = { lat, lng, accuracy? }`, with `draft.located = true` once GPS has succeeded. The water answer is `draft.water = { source, name }`, where `source` is one of `tank | canal | river | well | rain`.
 
