@@ -21,7 +21,56 @@ const MAX_TURNS = 5                                                // questions 
 const MAX_AI_CALLS = Number(process.env.MAX_AI_CALLS) || 3         // callers talking to Gemini at once
 const AI_CALLS_PER_HOUR = 4                                        // per phone number, protects the API quota
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+// --- Multi-Key Pool & Failover Management for Phone IVR ---
+const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || ''
+const API_KEYS = rawKeys
+  .split(/[,;\n\s]+/)
+  .map((k) => k.trim())
+  .filter((k) => k.length > 5)
+
+if (API_KEYS.length === 0) {
+  console.warn('[IVR] WARNING: No GEMINI_API_KEY or GEMINI_API_KEYS configured.')
+} else {
+  console.log(`[IVR KeyPool] Loaded ${API_KEYS.length} Gemini API key(s) with auto-failover & rotation.`)
+}
+
+let currentKeyIndex = 0
+
+function getAIClient(forcedIndex = null) {
+  if (API_KEYS.length === 0) return { client: new GoogleGenAI({ apiKey: 'missing' }), keyIndex: 0, keyMasked: 'none' }
+  const idx = forcedIndex !== null ? forcedIndex % API_KEYS.length : currentKeyIndex % API_KEYS.length
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length
+  const key = API_KEYS[idx]
+  return {
+    client: new GoogleGenAI({ apiKey: key }),
+    keyIndex: idx,
+    keyMasked: key.slice(0, 6) + '...' + key.slice(-4),
+  }
+}
+
+const RETRYABLE = /\b(429|500|503|504|404)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|NOT_FOUND|overloaded|high demand|timed? ?out|abort/i
+
+async function withKeyFailover(operation) {
+  const totalKeys = Math.max(1, API_KEYS.length)
+  let lastError = null
+
+  for (let attempt = 0; attempt < totalKeys; attempt++) {
+    const { client, keyIndex: kIdx, keyMasked } = getAIClient()
+    try {
+      return await operation(client)
+    } catch (err) {
+      lastError = err
+      const isRateOrTransient = RETRYABLE.test(err.message)
+      console.warn(`[IVR KeyPool] Key ${kIdx + 1}/${totalKeys} (${keyMasked}) error: ${err.message.slice(0, 120)}`)
+      if (isRateOrTransient && attempt < totalKeys - 1) {
+        console.log(`[IVR KeyPool] Rate limit/busy. Auto-switching to next API key for caller...`)
+        continue
+      }
+      if (!isRateOrTransient) break
+    }
+  }
+  throw lastError
+}
 const db = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT || 5432),
@@ -188,75 +237,80 @@ function to8kWav(pcm, rate) {
   return Buffer.concat([wavHeader(out.length, 8000), out])
 }
 
-// v2: audio made before 3.x models got plain text has "Read this aloud" spoken in it; a new id remakes it
-const ttsId = (text) => 'tts-' + crypto.createHash('sha1').update('v2|' + VOICE + '|' + text).digest('hex').slice(0, 16)
+// v3: audio without "Read this aloud" prefix; fresh hash remakes any old cached speech
+const ttsId = (text) => 'tts-' + crypto.createHash('sha1').update('v3|' + VOICE + '|' + text).digest('hex').slice(0, 16)
 const isCached = (text) => fs.existsSync(path.join(SOUNDS, ttsId(text) + '.wav'))
 
 // Text -> 8 kHz WAV in the shared folder; returns the name Asterisk plays it by
 async function tts(text) {
   const id = ttsId(text), file = path.join(SOUNDS, id + '.wav')
   if (!fs.existsSync(file)) {
-    let a, last
-    for (const model of TTS_MODELS) {
-      try {
-        const r = await ai.models.generateContent({
-          model,
-          // 3.x TTS speaks its input word for word, so the instruction would be read out too.
-          // 2.x needs it: without "read aloud", short texts make it try to answer them instead.
-          contents: [{ parts: [{ text: /^gemini-2\./.test(model) ? `Read this aloud exactly as written:\n${text}` : text }] }],
-          config: {
-            responseModalities: ['AUDIO'],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE } } },
-            httpOptions: { timeout: 45000 }
-          }
-        })
-        a = r.candidates?.[0]?.content?.parts?.[0]?.inlineData
-        if (a?.data) break
-        last = new Error('no audio returned')
-      } catch (e) {
-        last = e
-        console.warn(`tts: ${model} failed: ${String(e.message).slice(0, 120)}`)
+    const audioInfo = await withKeyFailover(async (ai) => {
+      let a, last
+      for (const model of TTS_MODELS) {
+        try {
+          const r = await ai.models.generateContent({
+            model,
+            contents: [{ parts: [{ text }] }],
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE } } },
+              httpOptions: { timeout: 45000 }
+            }
+          })
+          a = r.candidates?.[0]?.content?.parts?.[0]?.inlineData
+          if (a?.data) break
+          last = new Error('no audio returned')
+        } catch (e) {
+          last = e
+          console.warn(`tts: ${model} failed: ${String(e.message).slice(0, 120)}`)
+          if (!RETRYABLE.test(e.message)) throw e
+        }
       }
-    }
-    if (!a?.data) throw last
-    let pcm = Buffer.from(a.data, 'base64')
-    let rate = Number(/rate=(\d+)/.exec(a.mimeType || '')?.[1]) || 24000
-    if (/wav/i.test(a.mimeType || '')) ({ pcm, rate } = readWav(pcm))
-    fs.writeFileSync(file + '.part', to8kWav(pcm, rate))
+      if (!a?.data) throw last
+      let pcm = Buffer.from(a.data, 'base64')
+      let rate = Number(/rate=(\d+)/.exec(a.mimeType || '')?.[1]) || 24000
+      if (/wav/i.test(a.mimeType || '')) ({ pcm, rate } = readWav(pcm))
+      return { pcm, rate }
+    })
+    fs.writeFileSync(file + '.part', to8kWav(audioInfo.pcm, audioInfo.rate))
     fs.renameSync(file + '.part', file)
   }
-  return AST_SOUNDS + '/' + id     // full path: Asterisk's own sounds dir may not be /var/lib/asterisk/sounds
+  return AST_SOUNDS + '/' + id
 }
 
 async function askGemini(recording, history, context, lang) {
   const audio = { inlineData: { mimeType: 'audio/wav', data: fs.readFileSync(recording).toString('base64') } }
-  let last
-  for (const model of CHAT_MODELS) {
-    try {
-      const r = await ai.models.generateContent({
-        model,
-        contents: [...history, { role: 'user', parts: [audio] }],
-        config: {
-          systemInstruction: `${SYSTEM}\nThe caller chose ${LANG_NAME[lang]}; answer in it unless they speak another language.\nCaller's water level right now: ${context}`,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'OBJECT',
-            properties: { heard: { type: 'STRING' }, reply: { type: 'STRING' }, done: { type: 'BOOLEAN' } },
-            required: ['heard', 'reply', 'done']
-          },
-          httpOptions: { timeout: 25000 }
-        }
-      })
-      const ans = JSON.parse(r.text)
-      if (!ans.reply) throw new Error('empty reply')
-      history.push({ role: 'user', parts: [{ text: ans.heard || '(unclear)' }] }, { role: 'model', parts: [{ text: ans.reply }] })
-      return ans
-    } catch (e) {
-      last = e
-      console.warn(`chat: ${model} failed: ${e.message}`)
+  return await withKeyFailover(async (ai) => {
+    let last
+    for (const model of CHAT_MODELS) {
+      try {
+        const r = await ai.models.generateContent({
+          model,
+          contents: [...history, { role: 'user', parts: [audio] }],
+          config: {
+            systemInstruction: `${SYSTEM}\nThe caller chose ${LANG_NAME[lang]}; answer in it unless they speak another language.\nCaller's water level right now: ${context}`,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: { heard: { type: 'STRING' }, reply: { type: 'STRING' }, done: { type: 'BOOLEAN' } },
+              required: ['heard', 'reply', 'done']
+            },
+            httpOptions: { timeout: 25000 }
+          }
+        })
+        const ans = JSON.parse(r.text)
+        if (!ans.reply) throw new Error('empty reply')
+        history.push({ role: 'user', parts: [{ text: ans.heard || '(unclear)' }] }, { role: 'model', parts: [{ text: ans.reply }] })
+        return ans
+      } catch (e) {
+        last = e
+        console.warn(`chat: ${model} failed: ${e.message}`)
+        if (!RETRYABLE.test(e.message)) throw e
+      }
     }
-  }
-  throw last
+    throw last
+  })
 }
 
 // ---------- AGI protocol ----------

@@ -705,3 +705,94 @@ button.report-row { width: 100%; border: 0; font: inherit; color: inherit; text-
 /* A row inside the "Latest news" card on Home; the whole row is the tap target. */
 .news-mini { align-items: center; min-height: 44px; padding: 6px; margin: 0 -6px; border-radius: 16px; text-decoration: none; color: inherit; }
 .news-mini:active { background: var(--soft); }
+
+
+/* ---------- AI Assistant Live Voice & Live Translate UI ---------- */
+.chat-mic {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--brand-line, #b9e0f8);
+  background: var(--brand-soft, #e3f3fd);
+  color: var(--brand, #0874b8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+.chat-mic:hover {
+  background: var(--brand, #0874b8);
+  color: #fff;
+}
+.chat-mic.recording {
+  background: #ff3b30 !important;
+  border-color: #ff3b30 !important;
+  color: #fff !important;
+  animation: micPulse 1.2s infinite;
+}
+@keyframes micPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.6); }
+  70% { transform: scale(1.08); box-shadow: 0 0 0 8px rgba(255, 59, 48, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+}
+
+.chat-rec-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #fff4f2;
+  border: 1px solid #ffddd8;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #da4339;
+  font-weight: 600;
+}
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #da4339;
+  animation: recBlink 0.8s infinite;
+}
+@keyframes recBlink { 50% { opacity: 0.25; } }
+
+.chat-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-msg-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.chat-tool-btn {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(14, 33, 62, 0.12);
+  border-radius: 8px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate-700, #424e5e);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+.chat-tool-btn:hover:not(:disabled) {
+  background: #fff;
+  border-color: var(--brand, #0874b8);
+  color: var(--brand, #0874b8);
+}
+.chat-tool-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
